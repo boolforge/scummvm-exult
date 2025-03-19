@@ -1,0 +1,6 @@
+# ACK engine configuration for ScummVM
+# Based on the Adventure Construction Kit (ACK) engine
+
+# This file is included from the main configure script
+
+add_engine ack "Adventure Construction Kit" yes
