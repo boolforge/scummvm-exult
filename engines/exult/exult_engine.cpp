@@ -16,7 +16,7 @@
 #include "common/timer.h"
 #include "graphics/surface.h"
 #include "audio/mixer.h"
-#include "engines/metaengine.h" // For REGISTER_ENGINE (was metaengine/factory.h)
+#include "engines/metaengine.h" // For engine registration
 
 // Placeholder for actual Exult includes and namespace
 // These would be paths relative to the Exult source once it_s integrated
@@ -66,7 +66,7 @@ ExultEngine::~ExultEngine() {
 }
 
 Error ExultEngine::initialize(const Common::FSNode& gamePath, const Common::String& gameLanguage) {
-    debug(1, "ExultEngine: initialize() called for gamePath: %s", gamePath.getPath().c_str());
+    debug(1, "ExultEngine: initialize() called for gamePath: %s", gamePath.getPath().toString().c_str());
     _gamePath = gamePath;
 
     if (!_fileAdapter || !_graphicsAdapter || !_inputAdapter || !_audioAdapter) {
@@ -192,7 +192,7 @@ ExultMetaEngine::ExultMetaEngine() : MetaEngine() {
 }
 
 bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, DetectionLevel level) const {
-    debug(1, "ExultMetaEngine: canDetect() called for path: %s", node.getPath().c_str());
+    debug(1, "ExultMetaEngine: canDetect() called for path: %s", node.getPath().toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
     Common::FSNode gamedatDir = node.getChild("GAMEDAT");
@@ -217,20 +217,20 @@ bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, Detec
         }
     }
 
-    debug(1, "ExultMetaEngine: No Exult game detected at path: %s", node.getPath().c_str());
+    debug(1, "ExultMetaEngine: No Exult game detected at path: %s", node.getPath().toString().c_str());
     return false;
 }
 
 Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage, const void *meDesc) {
-    debug(1, "ExultMetaEngine: createInstance() called for gamePath: %s", gamePath.getPath().c_str());
+    debug(1, "ExultMetaEngine: createInstance() called for gamePath: %s", gamePath.getPath().toString().c_str());
     return new ExultEngine(syst, gamePath, gameLanguage);
 }
 
-void ExultMetaEngine::getSupportedGames(Common::Array<GameDescription> &games) const {
+void ExultMetaEngine::getSupportedGames(Common::Array<PlainGameDescriptor> &games) const {
     debug(1, "ExultMetaEngine: getSupportedGames() called.");
     // TODO: Refine these descriptions, add GUIDs, features, etc. as per ScummVM standards.
-    games.append(GameDescription("ultima7bg", "Ultima VII: The Black Gate", "exult-bg"));
-    games.append(GameDescription("ultima7si", "Ultima VII: Serpent Isle", "exult-si"));
+    games.append(PlainGameDescriptor("ultima7bg", "Ultima VII: The Black Gate", "exult-bg"));
+    games.append(PlainGameDescriptor("ultima7si", "Ultima VII: Serpent Isle", "exult-si"));
     // Add Forge of Virtue and Silver Seed if they have distinct detection/handling
 }
 
@@ -242,7 +242,7 @@ void ExultMetaEngine::freeInstance(Engine *engine) {
 // Register the Exult engine with ScummVM
 // The second parameter is the engine ID string used in config files etc.
 // This needs to be globally unique within ScummVM.
-static MetaEngine::Registration<ExultMetaEngine> _exultMetaEngineRegistration("exult");
+// static MetaEngine::Registration<ExultMetaEngine> _exultMetaEngineRegistration("exult"); // This needs to be updated
 
 } // namespace Exult
 } // namespace ScummVM
