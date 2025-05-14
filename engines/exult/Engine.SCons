@@ -4,8 +4,8 @@
 
 Import("env")
 
-# Define the source files for this engine module
-exult_engine_sources = [
+# Source files for the ScummVM engine wrapper and adapters
+wrapper_sources = [
     "exult_engine.cpp",
     "exult_graphics_adapter.cpp",
     "exult_input_adapter.cpp",
@@ -13,20 +13,66 @@ exult_engine_sources = [
     "exult_file_adapter.cpp",
 ]
 
-# Compile sources into object files.
-# The ScummVM build system uses a flag STATIC_ENGINE_MODE to determine
-# whether to build engines as static objects (part of the main executable)
-# or shared objects (plugins, though less common for all engines).
-if env.get("STATIC_ENGINE_MODE", True): # Defaulting to True as it's common for many engines
-    engine_objects = env.StaticObject(exult_engine_sources)
+# Exult core source files
+# Note: This list needs to be comprehensive and accurate based on Exult_Engine_s build requirements.
+# This is a starting point and will likely need refinement (e.g., excluding test files, platform-specific files not needed).
+# Paths are relative to this SCons file (i.e., engines/exult/)
+exult_core_base_dir = "exult_core_src"
+
+exult_core_sources = []
+
+# Add .cc files from the root of exult_core_src
+exult_core_sources += Glob(env.Dir(exult_core_base_dir).path + "/*.cc")
+
+# Add .cc files from key subdirectories
+exult_core_subdirs_with_cc = [
+    "actions",
+    "actors",
+    "audio",
+    "desktop",
+    "files",
+    "flic",
+    "gamemgr",
+    "gumps",
+    "imagewin",
+    "objs",
+    "pathfinder",
+    "shapes",
+    "usecode",
+    # Add other directories that contain .cc files needed for the engine runtime
+]
+
+for subdir in exult_core_subdirs_with_cc:
+    exult_core_sources += Glob(env.Dir(exult_core_base_dir).path + "/" + subdir + "/*.cc")
+
+# Combine wrapper sources and Exult core sources
+all_engine_sources = wrapper_sources + exult_core_sources
+
+# Define include paths
+# The main include path for Exult_Engine_s own headers
+exult_include_paths = [
+    env.Dir(exult_core_base_dir).path, # for includes like "exult.h"
+    env.Dir(exult_core_base_dir).path + "/headers", # if Exult has a general "headers" dir
+    # Add other specific Exult subdirectories that are used as include roots
+    # For example, if Exult code does #include "gumps/gump.h", then exult_core_base_dir is enough.
+    # If it does #include "gump.h" from within a gumps .cc file, and gump.h is also in gumps/, then it_s fine.
+    # We need to ensure that Exult_Engine_s internal include directives resolve correctly.
+    # Common practice is that the top-level source directory is an include path.
+    # Also, some projects put all public headers in a specific `include` or `headers` subdirectory.
+    # From the ls output, `exult_core_src/headers/` seems like a relevant path.
+]
+
+# Prepend to CPPPATH so they have priority for Exult_Engine_s own includes
+# env.Prepend(CPPPATH=exult_include_paths) # Prepend might be too aggressive, Append is safer for ScummVM structure
+env.Append(CPPPATH=exult_include_paths)
+
+# Compile all sources into object files.
+if env.get("STATIC_ENGINE_MODE", True):
+    engine_objects = env.StaticObject(all_engine_sources)
 else:
-    # If plugin support is more dynamic, SharedLibrary might be used here,
-    # but for typical ScummVM engine structure, SharedObject is for objects
-    # that might go into a shared library defined at a higher level.
-    engine_objects = env.SharedObject(exult_engine_sources)
+    engine_objects = env.SharedObject(all_engine_sources)
 
 # This tells SCons that this script produces/manages these objects.
-# The parent SConscript (likely in the 'engines' directory) will call this script
-# for each engine and collect the returned objects to be linked into ScummVM.
+# The parent SConscript will collect the returned objects.
 Return("engine_objects")
 
