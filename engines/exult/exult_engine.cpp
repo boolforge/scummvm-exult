@@ -11,7 +11,7 @@
 #include "common/archive.h"
 #include "common/config-manager.h"
 #include "common/debug.h"
-#include "common/eventpipe.h"
+// #include "common/eventpipe.h" // Removed, functionality likely in common/events.h
 #include "common/events.h"
 #include "common/timer.h"
 #include "graphics/surface.h"
