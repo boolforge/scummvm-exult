@@ -3,7 +3,7 @@
 #ifndef EXULT_INPUT_ADAPTER_H
 #define EXULT_INPUT_ADAPTER_H
 
-#include "common/event.h"
+#include "common/events.h"
 #include "common/eventmanager.h"
 #include "common/system.h" // Added for OSystem
 

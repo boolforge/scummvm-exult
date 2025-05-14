@@ -5,8 +5,8 @@
 
 #include "engines/engine.h"
 #include "common/config-manager.h"
-#include "common/fsnode.h"
-#include "metaengine/metaengine.h"
+#include "common/fs.h"
+#include "engines/metaengine.h"
 
 // Forward declarations for our adapters
 namespace ScummVM {
