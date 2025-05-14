@@ -16,7 +16,7 @@
 #include "common/timer.h"
 #include "graphics/surface.h"
 #include "audio/mixer.h"
-#include "metaengine/factory.h" // For REGISTER_ENGINE
+#include "engines/metaengine.h" // For REGISTER_ENGINE (was metaengine/factory.h)
 
 // Placeholder for actual Exult includes and namespace
 // These would be paths relative to the Exult source once it_s integrated
