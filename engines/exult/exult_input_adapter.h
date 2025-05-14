@@ -5,12 +5,16 @@
 
 #include "common/event.h"
 #include "common/eventmanager.h"
+#include "common/system.h" // Added for OSystem
 
-// Forward declarations for Exult classes if needed
-// namespace Exult {
-//     class Gumps_Manager;
-//     class Game_Manager; // For game-specific input like character movement
-// }
+// Forward declarations for Exult_Engine_s input-related classes
+// Based on exult_core_src/gumps/Gump_manager.h, exult_core_src/keys.h, exult_core_src/mouse.h
+namespace ExultCore {
+    class Gump_Manager;   // Manages UI elements (gumps)
+    class Keys;           // Handles keyboard input
+    class Mouse;          // Handles mouse input
+    // class Game_Manager; // If it also handles direct game input, might be needed
+}
 
 namespace ScummVM {
 
@@ -21,21 +25,23 @@ namespace Exult {
 
 class ExultInputAdapter {
 public:
-    ExultInputAdapter(OSystem* system, Common::EventManager* eventManager /*, ::Exult::Gumps_Manager* gumpsManager, ::Exult::Game_Manager* gameManager */);
+    // Constructor might take pointers to Exult_Engine_s input handling components
+    ExultInputAdapter(OSystem* system, Common::EventManager* eventManager,
+                      ExultCore::Gump_Manager* gumpsManager,
+                      ExultCore::Keys* keysHandler,
+                      ExultCore::Mouse* mouseHandler);
     ~ExultInputAdapter();
 
-    // Called by ExultEngine during its run loop to process pending ScummVM events
     void processScummVMEvents();
 
 private:
     OSystem* _osystem;
     Common::EventManager* _eventManager;
 
-    // Pointers to Exult components that handle input
-    // ::Exult::Gumps_Manager* _gumpsManager; // For UI interactions
-    // ::Exult::Game_Manager* _gameManager;   // For direct game actions (e.g., avatar movement)
+    ExultCore::Gump_Manager* _gumpsManager;
+    ExultCore::Keys* _keysHandler;
+    ExultCore::Mouse* _mouseHandler;
 
-    // Translates a ScummVM Common::Event to an Exult-understandable input
     void translateAndDispatch(const Common::Event& event);
 };
 
