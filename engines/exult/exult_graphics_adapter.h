@@ -5,52 +5,45 @@
 
 #include "graphics/surface.h"
 #include "common/rect.h"
+#include "common/system.h" // Added for OSystem
 
-// Forward declarations for Exult classes if needed
-// namespace Exult {
-//     class Shape;
-//     class Palette;
-// }
+// Forward declarations for Exult_Engine_s graphics classes
+// These would typically be found in exult_core_src/imagewin/imagewin.h, exult_core_src/palette.h etc.
+namespace ExultCore {
+    class ImageWin;     // Main rendering window/surface in Exult
+    class Palette;      // Exult_Engine_s palette management
+    // class Shape;     // If Exult has a distinct Shape class for drawing
+}
 
 namespace ScummVM {
 namespace Exult {
 
-// This class will act as a bridge between Exult_Engine_s rendering calls
-// and ScummVM_Engine_s Graphics::Surface.
 class ExultGraphicsAdapter {
 public:
-    ExultGraphicsAdapter(OSystem* system);
+    // Constructor might take a pointer to Exult_Engine_s ImageWin or other core graphics components
+    ExultGraphicsAdapter(OSystem* system /*, ExultCore::ImageWin* exultImageWin */);
     ~ExultGraphicsAdapter();
 
-    // Initializes the adapter, possibly linking to ScummVM_Engine_s screen surface
     bool init();
 
-    // Called by Exult_Engine_s renderFrame() to draw the entire scene
     void renderExultFrame();
 
     // Example methods to adapt Exult_Engine_s drawing primitives:
-    // These would be called by modified Exult rendering code or by the ExultEngine wrapper.
+    // void drawShape(ExultCore::Shape* shape, int x, int y, const ExultCore::Palette* palette = nullptr);
+    // void blitSurface(const byte* pixels, int src_x, int src_y, int width, int height, int dest_x, int dest_y, int pitch, const ExultCore::Palette* palette);
+    // void fillRect(const Common::Rect& rect, const Color& color);
+    // void present();
 
-    // void drawShape(::Exult::Shape* shape, int x, int y, const ::Exult::Palette* palette = nullptr);
-    // void drawTile(int tileNum, int x, int y);
-    // void blitSurface(const byte* pixels, int src_x, int src_y, int width, int height, int dest_x, int dest_y, int pitch, const ::Exult::Palette* palette);
-    // voidfillRect(const Common::Rect& rect, const Color& color);
-    // void present(); // If Exult has a specific presentation call, map it to _system->updateScreen() or similar
-
-    // Method to convert an Exult palette (e.g., 256-color) to ScummVM_Engine_s 32-bit format for a surface
-    // static void convertPalette(const byte* exultPaletteData, uint32* scummvmPalette, int numColors = 256);
+    // Method to convert an Exult palette to ScummVM_Engine_s 32-bit format
+    // static void convertExultPaletteToScummVM(const ExultCore::Palette* exultPalette, uint32* scummvmPalette, int numColors = 256);
 
 private:
-    OSystem* _osystem; // Pointer to ScummVM_Engine_s OSystem for accessing screen surface etc.
+    OSystem* _osystem;
     Graphics::Surface* _screenSurface; // Cached pointer to ScummVM_Engine_s screen surface
+    ExultCore::ImageWin* _exultImageWin; // Pointer to Exult_Engine_s main rendering/image window class
 
-    // Helper to lock and get the screen surface
     Graphics::Surface* lockScreen();
-    // Helper to unlock the screen surface and request update
     void unlockScreen(bool updateScreen = true);
-
-    // Placeholder for Exult_Engine_s specific rendering context or objects if needed
-    // void* _exultRenderContext;
 };
 
 } // namespace Exult
