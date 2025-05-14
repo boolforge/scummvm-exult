@@ -3,7 +3,7 @@
 #ifndef EXULT_FILE_ADAPTER_H
 #define EXULT_FILE_ADAPTER_H
 
-#include "common/fsnode.h"
+#include "common/fs.h"
 #include "common/stream.h"
 #include "common/system.h"
 
