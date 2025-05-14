@@ -1,0 +1,32 @@
+# engines/exult/Engine.SCons
+
+# SCons script for the Exult engine plugin
+
+Import("env")
+
+# Define the source files for this engine module
+exult_engine_sources = [
+    "exult_engine.cpp",
+    "exult_graphics_adapter.cpp",
+    "exult_input_adapter.cpp",
+    "exult_audio_adapter.cpp",
+    "exult_file_adapter.cpp",
+]
+
+# Compile sources into object files.
+# The ScummVM build system uses a flag STATIC_ENGINE_MODE to determine
+# whether to build engines as static objects (part of the main executable)
+# or shared objects (plugins, though less common for all engines).
+if env.get("STATIC_ENGINE_MODE", True): # Defaulting to True as it's common for many engines
+    engine_objects = env.StaticObject(exult_engine_sources)
+else:
+    # If plugin support is more dynamic, SharedLibrary might be used here,
+    # but for typical ScummVM engine structure, SharedObject is for objects
+    # that might go into a shared library defined at a higher level.
+    engine_objects = env.SharedObject(exult_engine_sources)
+
+# This tells SCons that this script produces/manages these objects.
+# The parent SConscript (likely in the 'engines' directory) will call this script
+# for each engine and collect the returned objects to be linked into ScummVM.
+Return("engine_objects")
+
