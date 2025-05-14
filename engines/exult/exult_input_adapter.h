@@ -4,7 +4,7 @@
 #define EXULT_INPUT_ADAPTER_H
 
 #include "common/events.h"
-#include "common/eventmanager.h"
+// #include "common/eventmanager.h" // Removed, as EventManager is in common/events.h
 #include "common/system.h" // Added for OSystem
 
 // Forward declarations for Exult_Engine_s input-related classes
