@@ -28,6 +28,9 @@
 #include <memory>
 #include <string>
 
+// Forward declaration for ScummVM File Adapter
+namespace ScummVM { namespace Exult { class ExultFileAdapter; } }
+
 /**
  *  This class manages "files". These "files" are managed by an
  *  unique identifier which is the actual file name for real files.
@@ -38,9 +41,11 @@ protected:
 	std::map<File_spec, std::unique_ptr<U7file>> file_list;
 	/// Static pointer to self.
 	static U7FileManager* self;
+	/// Static pointer to ScummVM_Engine_s file adapter for VFS access.
+	static ScummVM::Exult::ExultFileAdapter* _scummvm_file_adapter;
 
 public:
-	U7FileManager()                                = default;
+	U7FileManager(); // Made constructor public to allow ExultEngine to manage it if needed
 	U7FileManager(const U7FileManager&)            = delete;
 	U7FileManager& operator=(const U7FileManager&) = delete;
 	U7FileManager(U7FileManager&&)                 = default;
@@ -57,6 +62,10 @@ public:
 	static U7FileManager* get_ptr() {
 		return self;
 	}
+
+	// Method to set the ScummVM file adapter
+	static void set_scummvm_file_adapter(ScummVM::Exult::ExultFileAdapter* adapter);
 };
 
 #endif
+
