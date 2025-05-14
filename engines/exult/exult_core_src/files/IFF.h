@@ -23,67 +23,126 @@
 
 #include "U7file.h"
 #include "common_types.h"
-#include "exceptions.h"
+#include "exceptions.h" // Retained for file_open_exception, etc.
 
-#include <cstring>
+#include "common/stream.h" // For ScummVM::Common::SeekableReadStream
+#include "common/endians.h"  // For ScummVM_READ_BE32 etc.
+
+#include <cstring> // For strncmp, etc.
 #include <string>
 #include <vector>
+#include <memory> // For std::unique_ptr
 
-class DataSource;
+// class DataSource; // Replaced by ScummVM streams
 
 /**
  *  The IFF class is an data reader which reads data in the IFF
- *  file format. The actual data need not be in a file, however.
+ *  file format.
+ *  MODIFIED: Now uses ScummVM::Common::SeekableReadStream via U7file base class.
  */
 class IFF : public U7file {
 public:
-	struct IFFhdr {
-		char   form_magic[4];
-		uint32 size;
-		char   data_type[4];
+	// Standard IFF FORM header structure
+	struct IFF_FORM_Chunk {
+		char   chunkID[4]; // "FORM"
+		uint32 chunkSize;  // Size of the rest of the file after this field
+		char   formType[4]; // e.g., "CAT ", "LIST", specific game types like "SHAP"
+
+		bool read(ScummVM::Common::SeekableReadStream* stream) {
+			if (!stream || !stream->isOpen()) return false;
+			if (stream->read(chunkID, 4) != 4) return false;
+			chunkSize = stream->read_be32(); // IFF uses big-endian
+			if (stream->read(formType, 4) != 4) return false;
+			return !stream->readError();
+		}
+
+		bool isValid() const {
+			return strncmp(chunkID, "FORM", 4) == 0;
+		}
 	};
 
-	struct IFFobject {
-		char   type[4];
-		uint32 size;
-		char   even;
+	// General IFF chunk header structure
+	struct IFF_Generic_Chunk_Header {
+		char   chunkID[4];
+		uint32 chunkSize;
+
+		bool read(ScummVM::Common::SeekableReadStream* stream) {
+			if (!stream || !stream->isOpen()) return false;
+			if (stream->read(chunkID, 4) != 4) return false;
+			chunkSize = stream->read_be32();
+			return !stream->readError();
+		}
 	};
 
-	struct u7IFFobj {
-		char name[8];
-		// char    data[]; // Variable
-	};
+	// Exult-specific u7IFFobj structure (seems to be for named objects within some IFFs)
+	// This might be specific to certain IFF types Exult handles, like shapes.iff
+	// struct u7IFFobj {
+	// 	char name[8];
+	// 	// char    data[]; // Variable
+	// };
 
 protected:
-	//  The IFF's header. ++++ Unused????
-	// IFFhdr    header;
-	/// List of objects in the IFF file.
-	std::vector<Reference> object_list;
+	IFF_FORM_Chunk _formHeader;
+	std::vector<Reference> object_list; // Stores offset and size for each identified chunk/object
 
 	void index_file() override;
 
 	Reference get_object_reference(uint32 objnum) const override {
-		return object_list[objnum];
+		if (objnum < object_list.size()) {
+			return object_list[objnum];
+		}
+		return Reference{0,0}; // Invalid index
 	}
 
 public:
-	/// Basic constructor.
+	/// Constructor now takes a ScummVM stream.
 	/// @param spec File name and object index pair.
-	explicit IFF(const File_spec& spec) : U7file(spec) {}
+	/// @param stream ScummVM stream. IFF (via U7file) takes ownership.
+	IFF(const File_spec& spec, std::unique_ptr<ScummVM::Common::SeekableReadStream> stream)
+		: U7file(spec, std::move(stream)) {
+		if (_scummvmStream && _scummvmStream->isOpen()) {
+			long original_pos = _scummvmStream->pos();
+			_scummvmStream->seek(0, SEEK_SET);
+			if (_formHeader.read(_scummvmStream.get()) && _formHeader.isValid()) {
+				index_file(); // Populate object_list based on FORM type and subsequent chunks
+			} else {
+				_scummvmStream.reset(); // Invalidate if not a valid IFF FORM
+                // ScummVM::debug(1, "IFF: Failed to read or validate IFF FORM header for %s", identifier.name.c_str());
+			}
+			// Restore position if stream is still valid, though index_file might have moved it.
+			// if (_scummvmStream) _scummvmStream->seek(original_pos, SEEK_SET);
+		} else {
+            // ScummVM::debug(1, "IFF: Stream not valid for %s", identifier.name.c_str());
+        }
+	}
 
-	size_t number_of_objects() override {
+	size_t number_of_objects() const override { // made const
 		return object_list.size();
 	}
 
-	const char* get_archive_type() override {
+	const char* get_archive_type() const override { // made const
 		return "IFF";
 	}
 
-	static bool is_iff(IDataSource* in);
-	static bool is_iff(const std::string& fname);
+	const IFF_FORM_Chunk& getFormHeader() const { return _formHeader; }
+
+	// MODIFIED: Checks if stream is an IFF file
+	static bool is_iff(ScummVM::Common::SeekableReadStream* stream) {
+		if (!stream || !stream->isOpen() || stream->size() < 12) return false; // Minimum size for FORM header
+		long old_pos = stream->pos();
+		stream->seek(0, SEEK_SET);
+		IFF_FORM_Chunk testHeader;
+		bool result = testHeader.read(stream) && testHeader.isValid();
+		stream->seek(old_pos, SEEK_SET); // Restore position
+		return result && !stream->readError();
+	}
+
+	// static bool is_iff(const std::string& fname); // Direct file access removed
 };
 
-using IFFFile   = U7DataFile<IFF>;
-using IFFBuffer = U7DataBuffer<IFF>;
+// using IFFFile   = U7DataFile<IFF>; // U7DataFile template removed
+// using IFFBuffer = U7DataBuffer<IFF>; // U7DataBuffer template removed
+// U7FileManager will directly create IFF objects with streams.
 
 #endif
+
