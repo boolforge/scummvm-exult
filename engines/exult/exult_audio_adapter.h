@@ -6,10 +6,14 @@
 #include "audio/mixer.h"
 #include "common/system.h"
 
-// Forward declarations for Exult classes if needed
-// namespace Exult {
-//     class Audio_Manager; // Or whatever Exult calls its main audio component
-// }
+// Forward declarations for Exult_Engine_s audio classes
+// Based on exult_core_src/audio/Audio.h, AudioMixer.h, etc.
+namespace ExultCore {
+    class Audio;          // Main Exult audio system interface
+    class AudioMixer;     // Exult_Engine_s internal mixer, if distinct from ScummVM_Engine_s
+    // class Music_Player; // Or similar if Exult has a dedicated music player class
+    // class Sfx_Player;   // Or similar for sound effects
+}
 
 namespace ScummVM {
 
@@ -18,26 +22,18 @@ namespace Exult { class ExultEngine; }
 
 namespace Exult {
 
-// This class will bridge Exult_Engine_s audio generation with ScummVM_Engine_s Audio::Mixer.
-// One common approach is to make this class a custom Audio::Stream or Audio::Channel
-// that ScummVM_Engine_s mixer can poll for audio data.
 class ExultAudioAdapter /* : public Audio::Stream (or other ScummVM base class if applicable) */ {
 public:
-    ExultAudioAdapter(OSystem* system, Audio::Mixer* mixer /*, ::Exult::Audio_Manager* exultAudioManager */);
+    // Constructor might take pointers to Exult_Engine_s audio components
+    ExultAudioAdapter(OSystem* system, Audio::Mixer* mixer,
+                      ExultCore::Audio* exultAudioSystem /*, ExultCore::AudioMixer* exultInternalMixer */);
     ~ExultAudioAdapter();
 
-    // Initializes the audio adapter and registers with ScummVM_Engine_s mixer
     bool init();
-
-    // Shuts down the audio adapter
     void shutdown();
 
-    // If ExultAudioAdapter is a stream/channel, ScummVM_Engine_s mixer would call a method like this:
+    // If ExultAudioAdapter is a ScummVM Audio::Stream, this would be the callback:
     // virtual bool getSamples(int16 *stream, int length);
-    // This method would then call into Exult_Engine_s audio system to fill the buffer.
-
-    // Alternatively, Exult_Engine_s audio system might have its own callback that we need to hook
-    // or periodically pull data from.
 
     // Methods to control Exult_Engine_s audio (called from ExultEngine or Exult game logic via bridge)
     // void playSoundEffect(int soundId);
@@ -49,14 +45,10 @@ private:
     OSystem* _osystem;
     Audio::Mixer* _mixer; // ScummVM_Engine_s mixer to send audio data to
 
-    // Pointer to Exult_Engine_s audio manager/system
-    // ::Exult::Audio_Manager* _exultAudioManager;
+    ExultCore::Audio* _exultAudioSystem; // Pointer to Exult_Engine_s main audio system
+    // ExultCore::AudioMixer* _exultInternalMixer; // If Exult has its own mixer to manage
 
-    // Internal buffer if needed for sample format conversion or temporary storage
-    // Common::Array<int16> _internalBuffer;
-
-    // ScummVM audio stream ID if registered as a stream
-    // Audio::ChannelId _channelId;
+    // Audio::ChannelId _channelId; // If registered as a ScummVM audio channel/stream
 };
 
 } // namespace Exult
