@@ -7,22 +7,25 @@
 #include "common/fsnode_file.h"
 #include "common/path.h"
 
-// Placeholder for actual Exult includes for its File_Manager or resource loading routines
-// #include "exult_core/file_manager.h"
+// Actual Exult include for its U7FileManager
+// The path is relative to the engines/exult/ directory where this .cpp file resides.
+#include "exult_core_src/files/U7fileman.h" 
 
 namespace ScummVM {
 namespace Exult {
 
-ExultFileAdapter::ExultFileAdapter(OSystem* system /*, ::Exult::File_Manager* exultFileManager */)
-    : _osystem(system) /*,
-      _exultFileManager(exultFileManager) */ {
+ExultFileAdapter::ExultFileAdapter(OSystem* system, ExultCore::U7FileManager* exultFileManager)
+    : _osystem(system),
+      _exultFileManager(exultFileManager) {
     debug(1, "ExultFileAdapter: Constructor called.");
     if (!_osystem) {
         error("ExultFileAdapter: OSystem pointer is null!");
     }
-    // if (!_exultFileManager) {
-    //     warning("ExultFileAdapter: Exult File_Manager pointer is null!");
-    // }
+    if (!_exultFileManager) {
+        // This might be acceptable if Exult_Engine_s U7FileManager is created later by ExultEngine
+        // and then set, but for now, we expect it at construction or early init.
+        warning("ExultFileAdapter: Exult U7FileManager pointer is null at construction!");
+    }
 }
 
 ExultFileAdapter::~ExultFileAdapter() {
@@ -32,22 +35,30 @@ ExultFileAdapter::~ExultFileAdapter() {
 bool ExultFileAdapter::init(const Common::FSNode& gamePath) {
     debug(1, "ExultFileAdapter: init() called with gamePath: %s", gamePath.getPath().c_str());
     if (!_osystem) {
-        warning("ExultFileAdapter: Cannot init, OSystem is not available.");
+        error("ExultFileAdapter: Cannot init, OSystem is not available.");
         return false;
     }
     _gamePathNode = gamePath;
     if (!_gamePathNode.exists() || !_gamePathNode.isDirectory()) {
         warning("ExultFileAdapter: Provided gamePath does not exist or is not a directory: %s", gamePath.getPath().c_str());
-        // This might not be an error if Exult handles it, but good to note.
     }
 
-    // TODO: Initialize Exult_Engine_s file system to use this adapter or ScummVM_Engine_s streams.
-    // This might involve registering this adapter with Exult_Engine_s file manager or
-    // setting some global path variables within Exult_Engine_s context.
-    // (e.g., _exultFileManager->setBaseGamePath(_gamePathNode.getPath());)
-    // (e.g., _exultFileManager->registerStreamHandler(this);)
+    if (!_exultFileManager) {
+        error("ExultFileAdapter: Exult U7FileManager is null, cannot proceed with its initialization.");
+        return false;
+    }
 
-    debug(1, "ExultFileAdapter: Placeholder initialization complete.");
+    // TODO: Initialize Exult_Engine_s U7FileManager here.
+    // This is a critical step. U7FileManager needs to be configured to:
+    // 1. Know the base game path (from _gamePathNode.getPath().c_str()).
+    // 2. Potentially use ScummVM_Engine_s stream objects for its file operations instead of direct stdio or SDL_RWops.
+    //    This might involve modifying U7FileManager itself or providing it with factory methods/callbacks
+    //    that use this ExultFileAdapter to open ScummVM streams.
+    // Example (conceptual, actual U7FileManager API will differ):
+    // _exultFileManager->setBasePath(_gamePathNode.getPath().c_str());
+    // _exultFileManager->setStreamOpener(this); // If U7FM can take a helper to open streams
+
+    debug(1, "ExultFileAdapter: Placeholder initialization for U7FileManager interaction.");
     return true;
 }
 
@@ -58,24 +69,26 @@ Common::SeekableReadStream* ExultFileAdapter::openFileRead(const char* filename)
         return nullptr;
     }
 
-    // Construct the full path relative to the gamePathNode
-    // ScummVM_Engine_s FSNode system handles path concatenation and VFS lookups.
+    // TODO: This method should ideally be used by a modified U7FileManager.
+    // If Exult_Engine_s code directly calls this adapter (less ideal), then it proceeds as before.
+    // If U7FileManager is adapted to use ScummVM streams, then U7FileManager itself
+    // would call something like this to get a ScummVM stream for a given path.
+
     Common::FSNode fileNode = _gamePathNode.getChild(filename);
 
     if (!fileNode.exists() || fileNode.isDirectory()) {
-        debug(1, "ExultFileAdapter: File not found or is a directory: %s", fileNode.getPath().c_str());
+        debug(1, "ExultFileAdapter: File not found or is a directory via ScummVM VFS: %s", fileNode.getPath().c_str());
         return nullptr;
     }
 
-    // Common::Stream* stream = Common::FSNode_File::createReadStream(fileNode);
     Common::SeekableReadStream* stream = new Common::FSNodeReadStream(fileNode);
     if (!stream || !stream->isOpen()) {
         warning("ExultFileAdapter: Failed to open ScummVM stream for file: %s", fileNode.getPath().c_str());
-        delete stream; // Clean up if creation failed or stream isn_t open
+        delete stream;
         return nullptr;
     }
 
-    debug(2, "ExultFileAdapter: Successfully opened %s for reading.", fileNode.getPath().c_str());
+    debug(2, "ExultFileAdapter: Successfully opened %s for reading via ScummVM VFS.", fileNode.getPath().c_str());
     return stream;
 }
 
@@ -86,36 +99,11 @@ Common::WriteStream* ExultFileAdapter::openFileWrite(const char* filename) {
         return nullptr;
     }
 
-    // For save games, ScummVM usually uses SaveFileManager which handles paths.
-    // If this is for other types of files (logs, temp files within game dir structure),
-    // ensure the path is correctly resolved. For now, assume it_s relative to game data path
-    // or a path ScummVM expects for writable engine files.
+    // TODO: Similar to openFileRead, this needs to be integrated with U7FileManager or
+    // Exult_Engine_s save/write mechanisms. ScummVM_Engine_s SaveFileManager is the standard for savegames.
+    // For other writable files, the approach depends on Exult_Engine_s needs and ScummVM_Engine_s capabilities.
 
-    // This example assumes writing to a file relative to the game data path, which might not be
-    // standard for all ScummVM engines (saves usually go to a specific save path).
-    // This needs to be aligned with how Exult handles its writable files and how ScummVM expects them.
-    Common::FSNode fileNode = _gamePathNode.getChild(filename);
-
-    // Common::WriteStream* stream = Common::FSNode_File::createWriteStream(fileNode);
-    // FSNodeWriteStream might not be the public API; check ScummVM_Engine_s common/file.h or common/fsnode_file.h
-    // For simplicity, let_s assume a generic way to get a write stream if FSNode supports it.
-    // This part is highly dependent on ScummVM_Engine_s API for creating writable FSNode streams.
-    // The SaveFileManager is the more typical route for save files.
-
-    // Placeholder: ScummVM_Engine_s file writing is often more complex or uses specific managers.
-    // For save games, ExultEngine::save() would use getSaveFileManager()->openFile().
-    // This generic openFileWrite might be for other data Exult writes.
-
-    warning("ExultFileAdapter: openFileWrite is a placeholder and may need specific ScummVM file manager integration.");
-    // Example using a raw path if _gamePathNode is on a writable filesystem (not always true)
-    // Common::String fullPath = Common::Path::join(_gamePathNode.getPath(), filename);
-    // Common::WriteStream* stream = Common::File::openWrite(fullPath);
-    // if (!stream || !stream->isOpen()) {
-    //     warning("ExultFileAdapter: Failed to open write stream for: %s", fullPath.c_str());
-    //     delete stream;
-    //     return nullptr;
-    // }
-    // return stream;
+    warning("ExultFileAdapter: openFileWrite is a placeholder and needs proper integration with Exult_Engine_s file writing and ScummVM_Engine_s save mechanisms.");
     return nullptr; // Placeholder, needs proper implementation
 }
 
@@ -123,9 +111,10 @@ Common::WriteStream* ExultFileAdapter::openFileWrite(const char* filename) {
 bool ExultFileAdapter::fileExists(const char* filename) {
     debug(2, "ExultFileAdapter: fileExists(\"%s\") called.", filename);
     if (!_gamePathNode.exists()) {
-        // If game path itself doesn_t exist, no child file can exist through it.
         return false;
     }
+    // TODO: If _exultFileManager is fully integrated and uses ScummVM VFS,
+    // this call might go through it. Otherwise, direct VFS check is fine.
     return _gamePathNode.getChild(filename).exists();
 }
 
