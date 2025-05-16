@@ -239,10 +239,11 @@ void ExultMetaEngine::freeInstance(Engine *engine) {
     delete static_cast<ExultEngine *>(engine);
 }
 
-// Register the Exult engine with ScummVM
-// The second parameter is the engine ID string used in config files etc.
-// This needs to be globally unique within ScummVM.
-// static MetaEngine::Registration<ExultMetaEngine> _exultMetaEngineRegistration("exult"); // This needs to be updated
+// The ExultMetaEngine class, being a PluginObject derivative (via MetaEngine),
+// should be automatically discovered by the ScummVM plugin system when compiled
+// and linked as part of the Exult engine plugin. No explicit static registration
+// instance or macro is typically needed in modern ScummVM for MetaEngine derivatives.
+// The build system (module.mk) ensures this file is compiled and linked.
 
 } // namespace Exult
 } // namespace ScummVM
