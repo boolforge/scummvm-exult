@@ -72,7 +72,8 @@ static void qd_show_load_progress(int percents_loaded, void *p);
 QDEngineEngine::QDEngineEngine(OSystem *syst, const ADGameDescription *gameDesc) : Engine(syst),
 	_gameDescription(gameDesc), _randomSource("QDEngine") {
 	g_engine = this;
-	_pixelformat = Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0);
+
+	_pixelformat = Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
 
 	_screenW = 640;
 	_screenH = 480;
@@ -87,6 +88,7 @@ QDEngineEngine::QDEngineEngine(OSystem *syst, const ADGameDescription *gameDesc)
 	ConfMan.registerDefault("sound_volume", 255);
 	ConfMan.registerDefault("splash_enabled", true);
 	ConfMan.registerDefault("splash_time", 3000);
+	ConfMan.registerDefault("16bpp", false);
 
 	memset(_tagMap, 0, sizeof(_tagMap));
 }
@@ -190,6 +192,10 @@ Common::Error QDEngineEngine::run() {
 	if (ConfMan.getBool("splash_enabled")) {
 		sp.wait(ConfMan.getInt("splash_time"));
 		sp.destroy();
+	}
+
+	if (debugChannelSet(-1, kDebug16BppMode) || ConfMan.getBool("16bpp")) {
+		_pixelformat = Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0);
 	}
 
 	init_graphics();
@@ -427,11 +433,11 @@ static int detectVersion(Common::String gameID) {
 	} else if (gameID == "nupogodi3" && g_engine->getLanguage() == Common::CS_CZE) {
 		return 20031014;		// QDSCR_TEXT_DB = 184, d864cc279 (repo-vss)
 	} else if (gameID == "nupogodi3" && g_engine->getLanguage() == Common::LT_LTU) {
-		return 20031206;		// QDSCR_TEXT_DB = 185
+		return 20031206;		// QDSCR_TEXT_DB = 185, 6c43cda6bf
 	} else if (gameID == "pilots3") {
-		return 20040519;		// QDSCR_GAME_TITLE = 203
+		return 20040519;		// QDSCR_GAME_TITLE = 203, b34ca47148
 	} else if (gameID == "rybalka") {
-		return 20040601;		// QDSCR_GAME_TITLE = 206
+		return 20040601;		// QDSCR_GAME_TITLE = 206, 9e41b636f6c9
 	} else if (gameID == "pilots3d") {
 		return 20040601;		// QDSCR_GAME_TITLE = 206
 	} else if (gameID == "pilots3d-2") {
@@ -443,7 +449,7 @@ static int detectVersion(Common::String gameID) {
 	} else if (gameID == "3mice1" && (g_engine->getFeatures() & ADGF_DEMO)) {
 		return 20060129;		// QDSCR_SCREEN_TRANSFORM = 232
 	} else if (gameID == "3mice1") {
-		return 20060715;		// QDSCR_SCREEN_TRANSFORM = 232
+		return 20060715;		// QDSCR_SCREEN_TRANSFORM = 232, 54f9af2166
 	} else if (gameID == "shveik") {
 		return 20070503;		// QDSCR_GAME_TITLE = 231, QDSCR_RESOURCE_COMPRESSION = 243
 	} else if (gameID == "klepa") {
@@ -467,7 +473,10 @@ void QDEngineEngine::init_graphics() {
 
 	grDispatcher::set_instance(_grD);
 
-	grDispatcher::instance()->init(g_engine->_screenW, g_engine->_screenH, GR_RGB565);
+	if (g_engine->_pixelformat.bytesPerPixel == 4)
+		grDispatcher::instance()->init(g_engine->_screenW, g_engine->_screenH, GR_RGBA8888);
+	else
+		grDispatcher::instance()->init(g_engine->_screenW, g_engine->_screenH, GR_RGB565);
 
 	grDispatcher::instance()->setClip();
 	grDispatcher::instance()->setClipMode(1);

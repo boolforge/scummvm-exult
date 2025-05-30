@@ -102,9 +102,9 @@ void LibretroOpenGLGraphics::handleResizeImpl(const int width, const int height)
 bool LibretroOpenGLGraphics::hasFeature(OSystem::Feature f) const {
 	return
 #ifdef SCUMMVM_NEON
-	    (f == OSystem::kFeatureCpuNEON) ||
+	(f == OSystem::kFeatureCpuNEON) ||
 #endif
-	    OpenGL::OpenGLGraphicsManager::hasFeature(f);
+	OpenGL::OpenGLGraphicsManager::hasFeature(f);
 }
 
 void LibretroHWFramebuffer::activateInternal() {
@@ -112,12 +112,7 @@ void LibretroHWFramebuffer::activateInternal() {
 }
 
 void LibretroOpenGLGraphics::resetContext(OpenGL::ContextType contextType) {
-	const Graphics::PixelFormat rgba8888 =
-#ifdef SCUMM_LITTLE_ENDIAN
-	    Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24);
-#else
-	    Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
-#endif
+	const Graphics::PixelFormat rgba8888 = OpenGL::Texture::getRGBAPixelFormat();
 	notifyContextDestroy();
 	notifyContextCreate(contextType, new LibretroHWFramebuffer(), rgba8888, rgba8888);
 

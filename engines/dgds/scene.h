@@ -216,6 +216,7 @@ public:
 
 	bool load(const Common::String &filename, ResourceManager *resourceManager, Decompressor *decompressor);
 	bool loadRestart(const Common::String &filename, ResourceManager *resourceManager, Decompressor *decompressor);
+	void loadGameStateFromFile(Common::SeekableReadStream *file, const Common::String &filename);
 	bool parse(Common::SeekableReadStream *s) override;
 	bool parseInf(Common::SeekableReadStream *s);
 	const Common::String &getIconFile() const { return _iconFile; }
@@ -371,7 +372,11 @@ private:
 	Common::Array<TalkData> _talkData;
 
 	// From here on is mutable stuff that might need saving
+
+	// Dialogs must be in List, not Array - they can be dynamically added
+	// from another dialog, so pointers need to stay valid while adding more.
 	Common::List<Dialog> _dialogs;
+
 	Common::Array<SceneTrigger> _triggers;
 	Conversation _conversation;
 

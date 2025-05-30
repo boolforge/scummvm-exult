@@ -18,22 +18,34 @@ jobs:
       VCPKG_FEATURE_FLAGS: dependencygraph
       VCPKG_DEFAULT_TRIPLET: ${{ matrix.platform }}-windows
       VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
+      GIT_VCPKG_COMMIT: b02e341c927f16d991edbd915d8ea43eac52096c
+    permissions:
+      contents: write # For dependencygraph
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - uses: ilammy/setup-nasm@v1
-        if: matrix.platform == 'win32'   # only use NASM on some platforms if needed
-      
+      - name: Setup nasm
+        uses: ilammy/setup-nasm@v1
+        if: matrix.useNasm == 'true'
+      - name: Force CMake < 4.0 usage
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.31'
       - name: Install vcpkg
         uses: lukka/run-vcpkg@v11
         id: runvcpkg
         with:
-          vcpkgGitCommitId: 943c5ef1c8f6b5e6ced092b242c8299caae2ff01
-      
+          vcpkgGitCommitId: ${{ env.GIT_VCPKG_COMMIT }}
       - name: Integrate vcpkg
-        run: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}/vcpkg integrate install
-      
+        run: |
+          ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}/vcpkg integrate install
+      - name: Restore vcpkg cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg_cache
+          key: vcpkg-${{ env.GIT_VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json', 'vcpkg_installed/compiler-file-hash-cache.json', 'vcpkg_installed/status') }}
+          restore-keys: vcpkg-${{ env.GIT_VCPKG_COMMIT }}-${{ matrix.triplet }}-
       - name: Build create_project
         run: |
           cd devtools/create_project/cmake
@@ -45,14 +57,53 @@ jobs:
         run: |
           mkdir build-scummvm
           cd build-scummvm
-          ../devtools/create_project/cmake/Debug/create_project.exe .. --msvc --vcpkg --enable-all-engines --enable-3d --enable-wintermute --enable-vcruise --enable-debug
-          cd ..
-      
-      - name: Build scummvm (Windows)
+          ../devtools/create_project/cmake/Debug/create_project.exe .. --msvc --vcpkg --enable-all-engines ${{ matrix.configFlags }}
+          ls
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+      - name: Install vcpkg packages
+        run: |
+          vcpkg install
+      - name: Save vcpkg cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg_cache
+          key: vcpkg-${{ env.GIT_VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json', 'vcpkg_installed/compiler-file-hash-cache.json', 'vcpkg_installed/status') }}
+      - name: Build scummvm
         run: |
           cd build-scummvm
-          msbuild scummvm.sln /m /p:VcpkgEnableManifest=true /p:BuildInParallel=true /p:Configuration=${{ env.CONFIGURATION }} /p:PreferredToolArchitecture=x64 /p:Platform=${{ matrix.platform }}
-      
+          ls
+          msbuild scummvm.sln /m /p:VcpkgEnableManifest=true /p:BuildInParallel=true /p:Configuration=${{ env.CONFIGURATION }} /p:PreferredToolArchitecture=x64 /p:Platform=${{ matrix.platform }} /v:minimal
+      - name: Upload libs
+        uses: actions/upload-artifact@v4
+        if: matrix.buildArtifacts == 'true'
+        with:
+          name: libs-${{ matrix.triplet }}
+          path: ${{ env.VCPKG_INSTALLED_DIR }}\\${{ matrix.triplet }}
+      - name: Upload scummvm
+        uses: actions/upload-artifact@v4
+        if: matrix.buildArtifacts == 'true'
+        with:
+          name: scummvm-${{ matrix.arch }}
+          path: build-scummvm/${{ env.CONFIGURATION }}${{ matrix.arch }}/*.exe
+      - name: Upload scummvm libs
+        uses: actions/upload-artifact@v4
+        if: matrix.buildArtifacts == 'true'
+        with:
+          name: scummvm-${{ matrix.arch }}
+          path: ${{ env.VCPKG_INSTALLED_DIR }}\\${{ matrix.triplet }}\\bin\\*.dll
+      - name: Upload scummvm symbols
+        uses: actions/upload-artifact@v4
+        if: matrix.buildArtifacts == 'true'
+        with:
+          name: symbols-${{ matrix.arch }}
+          path: build-scummvm/${{ env.CONFIGURATION }}${{ matrix.arch }}/*.pdb
+      - name: Upload scummvm libs symbols
+        uses: actions/upload-artifact@v4
+        if: matrix.buildArtifacts == 'true'
+        with:
+          name: symbols-${{ matrix.arch }}
+          path: ${{ env.VCPKG_INSTALLED_DIR }}\\${{ matrix.triplet }}\\bin\\*.pdb
   xcode:
     name: macOS (Xcode)
     runs-on: macos-13
@@ -66,9 +117,6 @@ jobs:
             buildFlags: -scheme ScummVM-iOS CODE_SIGN_IDENTITY="" CODE_SIGNING_ALLOWED=NO
             configFlags: --use-xcframework --enable-all-engines --enable-3d --enable-wintermute --enable-vcruise --enable-debug --disable-nasm --disable-taskbar --disable-tts
             packagesUrl: https://downloads.scummvm.org/frs/build/scummvm-ios7-libs-v3.zip
-    env:
-      BUILDCACHE_MAX_CACHE_SIZE: 2000000000
-      BUILDCACHE_HARD_LINKS: true
     defaults:
       run:
         shell: bash
@@ -94,9 +142,15 @@ jobs:
       
       - name: Call create_project (Xcode)
         run: |
-          ./devtools/create_project/xcode/build/Release/create_project . --xcode --enable-all-engines ${{ matrix.include.configFlags }}
-      
-      - name: Build scummvm (Xcode)
+          ./devtools/create_project/xcode/build/Release/create_project . --xcode --enable-all-engines ${{ matrix.configFlags }}
+          ls
+      - name: Build cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.platform }}
+          max-size: 1G
+          create-symlink: true
+      - name: Build scummvm
         run: |
           xcodebuild CC=clang CPLUSPLUS=clang++ LD=clang LDPLUSPLUS=clang++ build -project scummvm.xcodeproj ${{ matrix.include.buildFlags }} | awk '$1 !~ /^(export|cd|clang++)/'
       
