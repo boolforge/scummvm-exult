@@ -437,6 +437,12 @@ BaseGameInfo* ExultMenu::run() {
 		throw quit_exception(1);
 #endif
 	}
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(BUNDLE_CHECK(BUNDLE_EXULT_FLX, EXULT_FLX), EXULT_FLX_POINTERS_SHP);
+	// Mouse mouse(gwin, stream);
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
 	IExultDataSource mouse_data(
 			BUNDLE_CHECK(BUNDLE_EXULT_FLX, EXULT_FLX), EXULT_FLX_POINTERS_SHP);
 	Mouse mouse(gwin, mouse_data);
