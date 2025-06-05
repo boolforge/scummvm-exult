@@ -96,6 +96,13 @@ std::unique_ptr<IDataSource> open_music_flex(const std::string& flex, int num) {
 	}
 
 	pflex += flex.c_str() + prefix_len;
+	
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(flex, num);
+	// return std::make_unique<IStreamDataSource>(stream); // Would need to create this adapter class
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
 	if (is_system_path_defined("<BUNDLE>")) {
 		string bflex("<BUNDLE>/");
 		bflex += flex.c_str() + prefix_len;
