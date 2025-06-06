@@ -190,9 +190,15 @@ void Gump::set_object_area(
 					EXULT_SI_FLX_GUMP_AREA_INFO_TXT);
 		}
 
-		IExultDataSource datasource(
-				flx, GUMP_AREA_INFO, PATCH_GUMP_AREA_INFO, 0);
-		gump_area_info = std::make_unique<Text_msg_file_reader>(datasource);
+			// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(flx, 0);
+	// gump_area_info = std::make_unique<Text_msg_file_reader>(stream); // Text_msg_file_reader would need to accept ScummVM streams
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
+	IExultDataSource datasource(
+			flx, GUMP_AREA_INFO, PATCH_GUMP_AREA_INFO, 0);
+	gump_area_info = std::make_unique<Text_msg_file_reader>(datasource);;
 	}
 
 	// if we sucesfully read it  try to use it
