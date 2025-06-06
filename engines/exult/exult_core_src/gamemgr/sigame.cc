@@ -688,12 +688,18 @@ void SI_Game::play_intro() {
 		playfli fli4(INTRO_DAT, PATCH_INTRO, 4);
 		fli4.info();
 
-		IExultDataSource gshape_ds(INTRO_DAT, PATCH_INTRO, 30);
-		char             name[9] = {0};
-		gshape_ds.read(name, 8);
-		Shape_frame* sf;
+		// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(INTRO_DAT, 30);
+	// Shape_file would need to be updated to accept ScummVM streams
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
+	IExultDataSource gshape_ds(INTRO_DAT, PATCH_INTRO, 30);
+	char             name[9] = {0};
+	gshape_ds.read(name, 8);
+	Shape_frame* sf;
 
-		const Shape_file gshape(&gshape_ds);
+	const Shape_file gshape(&gshape_ds);ds);
 
 		cout << "Shape '" << name << "' in intro.dat has "
 			 << gshape.get_num_frames() << endl;
