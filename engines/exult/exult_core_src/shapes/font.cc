@@ -766,6 +766,13 @@ int Font::load_internal(IDataSource& data, int hlead, int vlead) {
 
 int Font::load(const File_spec& fname0, int index, int hlead, int vlead) {
 	clean_up();
+	
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(fname0, index);
+	// return load_internal(stream, hlead, vlead); // load_internal would need to accept ScummVM streams
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
 	IExultDataSource data(fname0, index);
 	return load_internal(data, hlead, vlead);
 }
@@ -774,6 +781,13 @@ int Font::load(
 		const File_spec& fname0, const File_spec& fname1, int index, int hlead,
 		int vlead) {
 	clean_up();
+	
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(fname0, fname1, index);
+	// return load_internal(stream, hlead, vlead); // load_internal would need to accept ScummVM streams
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
 	IExultDataSource data(fname0, fname1, index);
 	return load_internal(data, hlead, vlead);
 }
