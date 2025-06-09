@@ -62,21 +62,21 @@ Common::Error ExultEngine::initialize(const Common::FSNode& gamePath, const Comm
 
     if (!_fileAdapter || !_graphicsAdapter || !_inputAdapter || !_audioAdapter) {
         error("ExultEngine: One or more adapters are null during initialize!");
-        return Common::Error::kErrorSystem;
+        return Common::kErrorSystem;
     }
 
     // Initialize adapters first, as Exult core might depend on them
     if (!_fileAdapter->init(gamePath)) {
         error("ExultEngine: Failed to initialize File Adapter.");
-        return Common::Error::kErrorSystem;
+        return Common::kErrorSystem;
     }
     if (!_graphicsAdapter->init()) {
         error("ExultEngine: Failed to initialize Graphics Adapter.");
-        return Common::Error::kErrorSystem;
+        return Common::kErrorSystem;
     }
     if (!_audioAdapter->init()) {
         error("ExultEngine: Failed to initialize Audio Adapter.");
-        return Common::Error::kErrorSystem;
+        return Common::kErrorSystem;
     }
 
     _initialized = true;
@@ -100,7 +100,7 @@ Common::Error ExultEngine::run() {
     debug(1, "ExultEngine: run() called.");
     if (!_initialized) {
         warning("ExultEngine::run() called before successful initialization.");
-        return Common::Error::kErrorSystem;
+        return Common::kErrorSystem;
     }
 
     while (!shouldQuit()) {
@@ -137,11 +137,11 @@ ExultMetaEngine::ExultMetaEngine() : MetaEngineDetection() {
 }
 
 Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **descriptor) {
-    debug(1, "ExultMetaEngine: identifyGame() called for path: %s", game.path.getPath().toString().c_str());
+    debug(1, "ExultMetaEngine: identifyGame() called for path: %s", game.path.toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
-    Common::FSNode gamedatDir = game.path.resolvePath("GAMEDAT");
-    Common::FSNode staticDir = game.path.resolvePath("STATIC");
+    Common::FSNode gamedatDir = game.path.getChild("GAMEDAT");
+    Common::FSNode staticDir = game.path.getChild("STATIC");
 
     if (gamedatDir.exists() && staticDir.exists()) {
         game.engineId = getName();
@@ -152,7 +152,7 @@ Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **des
         return Common::kNoError;
     }
 
-    return Common::Error::kErrorSystem; // Indicate no game detected
+    return Common::kErrorSystem; // Indicate no game detected
 }
 
 PlainGameList ExultMetaEngine::getSupportedGames() const {
