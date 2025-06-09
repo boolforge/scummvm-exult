@@ -17,6 +17,8 @@
 #include "audio/mixer.h"
 #include "engines/metaengine.h" // For engine registration and DetectionLevel
 #include "graphics/VectorRenderer.h" // Corrected include for Color
+#include "common/error.h" // For Common::Error and kNoError/kErrorSystem
+#include "engines/game.h" // For ScummVM::GameDescription
 
 namespace ScummVM {
 namespace Exult {
@@ -44,7 +46,8 @@ ExultEngine::ExultEngine(OSystem *system, const Common::FSNode& gamePath, const 
 }
 
 ExultEngine::~ExultEngine() {
-    debug(1, "ExultEngine: Destructor called.");
+    debug(1, "ExultEngine: Destructor called.
+");
     if (_initialized) {
         shutdown(); 
     }
@@ -60,21 +63,21 @@ Common::Error ExultEngine::initialize(const Common::FSNode& gamePath, const Comm
 
     if (!_fileAdapter || !_graphicsAdapter || !_inputAdapter || !_audioAdapter) {
         error("ExultEngine: One or more adapters are null during initialize!");
-        return Common::kErrorSystem;
+        return Common::Error::kErrorSystem;
     }
 
     // Initialize adapters first, as Exult core might depend on them
     if (!_fileAdapter->init(gamePath)) {
         error("ExultEngine: Failed to initialize File Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error::kErrorSystem;
     }
     if (!_graphicsAdapter->init()) {
         error("ExultEngine: Failed to initialize Graphics Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error::kErrorSystem;
     }
     if (!_audioAdapter->init()) {
         error("ExultEngine: Failed to initialize Audio Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error::kErrorSystem;
     }
 
     _initialized = true;
@@ -143,7 +146,7 @@ ExultMetaEngine::ExultMetaEngine() : MetaEngine() {
     debug(1, "ExultMetaEngine: Constructor called.");
 }
 
-bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, DetectionLevel level) const {
+bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, MetaEngineDetection::DetectionLevel level) const {
     debug(1, "ExultMetaEngine: canDetect() called for path: %s", node.getPath().toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
@@ -158,9 +161,9 @@ Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gam
     return new ExultEngine(syst, gamePath, gameLanguage);
 }
 
-void ExultMetaEngine::getSupportedGames(Common::Array<GameDescription> &games) const {
+void ExultMetaEngine::getSupportedGames(Common::Array<ScummVM::GameDescription> &games) const {
     // Placeholder for adding supported game descriptions
-    GameDescription desc;
+    ScummVM::GameDescription desc;
     desc.id = "ultima7";
     desc.description = "Ultima VII: The Black Gate";
     desc.engine = "Exult";

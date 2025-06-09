@@ -8,6 +8,7 @@
 #include "common/fs.h"
 #include "engines/metaengine.h"
 #include "engines/game.h" // Required for GameDescription
+#include "common/error.h" // Required for Common::Error and kNoError/kErrorSystem
 
 // Forward declarations for our adapters
 namespace ScummVM {
@@ -60,7 +61,7 @@ public:
 
     virtual bool canDetect(OSystem *syst, const Common::FSNode& node, MetaEngineDetection::DetectionLevel level = MetaEngineDetection::kDetectionLevel_Complete) const;
     virtual Engine *createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage = "en", const void *meDesc = nullptr);
-    virtual void getSupportedGames(Common::Array<GameDescription> &games) const;
+    virtual void getSupportedGames(Common::Array<ScummVM::GameDescription> &games) const;
     virtual void freeInstance(Engine *engine);
 };
 
