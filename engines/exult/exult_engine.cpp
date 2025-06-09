@@ -132,7 +132,7 @@ void ExultEngine::renderFrame() {
 
 // --- ExultMetaEngine Implementation ---
 
-ExultMetaEngine::ExultMetaEngine() : MetaEngine() {
+ExultMetaEngine::ExultMetaEngine() : MetaEngineDetection() {
     debug(1, "ExultMetaEngine: Constructor called.");
 }
 
@@ -140,8 +140,8 @@ Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **des
     debug(1, "ExultMetaEngine: identifyGame() called for path: %s", game.path.getPath().toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
-    Common::FSNode gamedatDir = game.path.getChild("GAMEDAT");
-    Common::FSNode staticDir = game.path.getChild("STATIC");
+    Common::FSNode gamedatDir = game.path.resolvePath("GAMEDAT");
+    Common::FSNode staticDir = game.path.resolvePath("STATIC");
 
     if (gamedatDir.exists() && staticDir.exists()) {
         game.engineId = getName();
@@ -155,16 +155,31 @@ Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **des
     return Common::Error::kErrorSystem; // Indicate no game detected
 }
 
-Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage, const void *meDesc) {
-    return new ExultEngine(syst, gamePath, gameLanguage);
-}
-
 PlainGameList ExultMetaEngine::getSupportedGames() const {
     PlainGameList games;
     // Placeholder for adding supported game descriptions
     games.push_back(PlainGameDescriptor::of("ultima7", "Ultima VII: The Black Gate"));
     games.push_back(PlainGameDescriptor::of("ultima7si", "Ultima VII Part Two: Serpent Isle"));
     return games;
+}
+
+DetectedGames ExultMetaEngine::detectGames(const Common::FSList &fslist, uint32 skipADFlags, bool skipIncomplete) {
+    DetectedGames detectedGames;
+    // Placeholder for actual detection logic
+    // Iterate through fslist and call identifyGame for each potential game path
+    // For now, just return an empty list
+    return detectedGames;
+}
+
+void ExultMetaEngine::dumpDetectionEntries() const {
+    // Placeholder for dumping detection entries
+    debug(1, "ExultMetaEngine: dumpDetectionEntries() called.");
+}
+
+// These are not part of MetaEngineDetection, but are needed for the engine to function
+// They will be called by the main ScummVM application through the MetaEngine interface
+Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage, const void *meDesc) {
+    return new ExultEngine(syst, gamePath, gameLanguage);
 }
 
 void ExultMetaEngine::freeInstance(Engine *engine) {
