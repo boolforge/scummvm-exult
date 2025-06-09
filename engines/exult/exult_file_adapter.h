@@ -7,10 +7,9 @@
 #include "common/stream.h"
 #include "common/system.h"
 
-// Forward declarations for Exult_Engine_s file management classes
-// These would typically be found in exult_core_src/files/U7fileman.h or similar
+// Forward declarations for ExultCore components (if needed later for direct integration)
 namespace ExultCore {
-    class U7FileManager; // Assuming this is Exult_Engine_s main file manager
+    // class U7FileManager;
 }
 
 namespace ScummVM {
@@ -22,15 +21,13 @@ namespace Exult {
 
 class ExultFileAdapter {
 public:
-    // Constructor now takes a pointer to Exult_Engine_s U7FileManager instance
-    ExultFileAdapter(OSystem* system, ExultCore::U7FileManager* exultFileManager);
+    // Modified constructor to only take OSystem* for now
+    ExultFileAdapter(OSystem* system);
     ~ExultFileAdapter();
 
     bool init(const Common::FSNode& gamePath);
 
-    // These methods will now try to use Exult_Engine_s file manager, which in turn
-    // will need to be adapted to use ScummVM_Engine_s streams or VFS.
-    // For now, the adapter might just pass through file requests to Exult_Engine_s FM.
+    // These methods will need to be implemented to bridge ScummVM VFS with Exult file operations
     Common::SeekableReadStream* openFileRead(const char* filename);
     Common::WriteStream* openFileWrite(const char* filename);
     bool fileExists(const char* filename);
@@ -40,11 +37,12 @@ public:
 private:
     OSystem* _osystem;
     Common::FSNode _gamePathNode;
-    ExultCore::U7FileManager* _exultFileManager; // Pointer to Exult_Engine_s file manager
+    // ExultCore::U7FileManager* _exultFileManager; // Removed for now
 };
 
 } // namespace Exult
 } // namespace ScummVM
 
 #endif // EXULT_FILE_ADAPTER_H
+
 
