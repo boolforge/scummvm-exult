@@ -59,7 +59,7 @@ public:
     virtual const char *getOriginalName() const { return "Ultima VII"; }
     virtual const char *getDesc() const { return "Exult engine for Ultima VII: The Black Gate and Serpent Isle"; }
 
-    virtual bool canDetect(OSystem *syst, const Common::FSNode& node, MetaEngineDetection::DetectionLevel level = MetaEngineDetection::kDetectionLevel_Complete) const;
+    virtual bool canDetect(OSystem *syst, const Common::FSNode& node, ScummVM::MetaEngineDetection::DetectionLevel level = ScummVM::MetaEngineDetection::kDetectionLevel_Complete) const;
     virtual Engine *createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage = "en", const void *meDesc = nullptr);
     virtual void getSupportedGames(Common::Array<ScummVM::GameDescription> &games) const;
     virtual void freeInstance(Engine *engine);

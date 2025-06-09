@@ -46,9 +46,8 @@ ExultEngine::ExultEngine(OSystem *system, const Common::FSNode& gamePath, const 
 }
 
 ExultEngine::~ExultEngine() {
-    debug(1, "ExultEngine: Destructor called.
-");
-    if (_initialized) {
+    debug(1, "ExultEngine: Destructor called.");
+    if (_initialized) { // Removed extra newline here
         shutdown(); 
     }
     delete _graphicsAdapter; _graphicsAdapter = nullptr;
@@ -146,7 +145,7 @@ ExultMetaEngine::ExultMetaEngine() : MetaEngine() {
     debug(1, "ExultMetaEngine: Constructor called.");
 }
 
-bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, MetaEngineDetection::DetectionLevel level) const {
+bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, ScummVM::MetaEngineDetection::DetectionLevel level) const {
     debug(1, "ExultMetaEngine: canDetect() called for path: %s", node.getPath().toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
