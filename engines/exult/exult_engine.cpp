@@ -47,7 +47,7 @@ ExultEngine::ExultEngine(OSystem *system, const Common::FSNode& gamePath, const 
 
 ExultEngine::~ExultEngine() {
     debug(1, "ExultEngine: Destructor called.");
-    if (_initialized) { // Removed extra newline here
+    if (_initialized) {
         shutdown(); 
     }
     delete _graphicsAdapter; _graphicsAdapter = nullptr;
