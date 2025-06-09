@@ -18,7 +18,7 @@
 #include "engines/metaengine.h" // For engine registration and DetectionLevel
 #include "graphics/VectorRenderer.h" // Corrected include for Color
 #include "common/error.h" // For Common::Error and kNoError/kErrorSystem
-#include "engines/game.h" // For ScummVM::GameDescription
+#include "engines/game.h" // For ScummVM::GameDescription and PlainGameList
 
 namespace ScummVM {
 namespace Exult {
@@ -160,20 +160,12 @@ Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gam
     return new ExultEngine(syst, gamePath, gameLanguage);
 }
 
-void ExultMetaEngine::getSupportedGames(Common::Array<ScummVM::GameDescription> &games) const {
+PlainGameList ExultMetaEngine::getSupportedGames() const {
+    PlainGameList games;
     // Placeholder for adding supported game descriptions
-    ScummVM::GameDescription desc;
-    desc.id = "ultima7";
-    desc.description = "Ultima VII: The Black Gate";
-    desc.engine = "Exult";
-    desc.language = "en";
-    games.push_back(desc);
-
-    desc.id = "ultima7si";
-    desc.description = "Ultima VII Part Two: Serpent Isle";
-    desc.engine = "Exult";
-    desc.language = "en";
-    games.push_back(desc);
+    games.push_back(PlainGameDescriptor::of("ultima7", "Ultima VII: The Black Gate"));
+    games.push_back(PlainGameDescriptor::of("ultima7si", "Ultima VII Part Two: Serpent Isle"));
+    return games;
 }
 
 void ExultMetaEngine::freeInstance(Engine *engine) {
