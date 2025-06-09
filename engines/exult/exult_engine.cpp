@@ -96,11 +96,11 @@ void ExultEngine::shutdown() {
     debug(1, "ExultEngine: Placeholder shutdown complete.");
 }
 
-void ExultEngine::run() {
+Common::Error ExultEngine::run() {
     debug(1, "ExultEngine: run() called.");
     if (!_initialized) {
         warning("ExultEngine::run() called before successful initialization.");
-        return;
+        return Common::Error::kErrorSystem;
     }
 
     while (!shouldQuit()) {
@@ -111,14 +111,12 @@ void ExultEngine::run() {
     }
 
     debug(1, "ExultEngine: run() loop finished.");
+    return Common::kNoError;
 }
 
 void ExultEngine::processInputEvents() {
     if (_inputAdapter) {
         _inputAdapter->processScummVMEvents();
-    } else {
-        Common::Event event;
-        while (getEventManager()->pollEvent(event)) { /* Discard */ }
     }
 }
 
@@ -129,13 +127,6 @@ void ExultEngine::updateGameLogic() {
 void ExultEngine::renderFrame() {
     if (_graphicsAdapter) {
         _graphicsAdapter->renderExultFrame();
-    } else {
-        // Fallback: clear screen or show error if graphics adapter is missing
-        // Graphics::Surface *screen = _system->lockScreenSurface(); // Not a direct member of OSystem
-        // if (screen) {
-        //     screen->clear(Graphics::Color(128, 0, 0)); // Red to indicate error
-        //     _system->unlockScreenSurface(true); // Not a direct member of OSystem
-        // }
     }
 }
 
@@ -145,15 +136,23 @@ ExultMetaEngine::ExultMetaEngine() : MetaEngine() {
     debug(1, "ExultMetaEngine: Constructor called.");
 }
 
-bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, ScummVM::MetaEngineDetection::DetectionLevel level) const {
-    debug(1, "ExultMetaEngine: canDetect() called for path: %s", node.getPath().toString().c_str());
+Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **descriptor) {
+    debug(1, "ExultMetaEngine: identifyGame() called for path: %s", game.path.getPath().toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
-    Common::FSNode gamedatDir = node.getChild("GAMEDAT");
-    Common::FSNode staticDir = node.getChild("STATIC");
+    Common::FSNode gamedatDir = game.path.getChild("GAMEDAT");
+    Common::FSNode staticDir = game.path.getChild("STATIC");
 
-    // Placeholder for actual detection logic
-    return gamedatDir.exists() && staticDir.exists();
+    if (gamedatDir.exists() && staticDir.exists()) {
+        game.engineId = getName();
+        game.gameId = "ultima7"; // Placeholder game ID
+        game.description = "Ultima VII: The Black Gate (Detected by Exult Engine)";
+        game.canBeAdded = true;
+        *descriptor = nullptr; // No specific descriptor needed for now
+        return Common::kNoError;
+    }
+
+    return Common::Error::kErrorSystem; // Indicate no game detected
 }
 
 Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage, const void *meDesc) {

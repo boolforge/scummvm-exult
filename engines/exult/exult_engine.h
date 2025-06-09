@@ -34,8 +34,8 @@ public:
     virtual const char *getGameVersion() const { return "Various"; } 
 
     virtual Common::Error initialize(const Common::FSNode& gamePath, const Common::String& gameLanguage = "en");
-    virtual void run();
-    virtual void shutdown();
+    virtual Common::Error run(); // Corrected return type to Common::Error
+    virtual void shutdown() override; // Added override
 
 private:
     ExultGraphicsAdapter* _graphicsAdapter;
@@ -55,15 +55,14 @@ class ExultMetaEngine : public MetaEngine {
 public:
     ExultMetaEngine();
 
-    virtual const char *getName() const { return "Exult"; }
+    virtual const char *getName() const override { return "Exult"; } // Added override
     virtual const char *getOriginalName() const { return "Ultima VII"; }
     virtual const char *getDesc() const { return "Exult engine for Ultima VII: The Black Gate and Serpent Isle"; }
 
-    // Corrected canDetect signature: removed default argument from declaration in header
-    virtual bool canDetect(OSystem *syst, const Common::FSNode& node, ScummVM::MetaEngineDetection::DetectionLevel level) const override;
-    // Corrected getSupportedGames signature to match MetaEngine base class
-    virtual PlainGameList getSupportedGames() const override;
+    // Corrected signature to match MetaEngine::identifyGame
+    virtual Common::Error identifyGame(DetectedGame &game, const void **descriptor) override;
     virtual Engine *createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage = "en", const void *meDesc = nullptr);
+    virtual PlainGameList getSupportedGames() const override; // Added override
     virtual void freeInstance(Engine *engine);
 };
 
