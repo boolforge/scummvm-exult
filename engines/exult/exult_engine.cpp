@@ -20,6 +20,11 @@
 #include "common/error.h" // For Common::Error and kNoError/kErrorSystem
 #include "engines/game.h" // For ScummVM::GameDescription and PlainGameList
 
+// Exult core includes
+#include "exult_core_src/exult.h"
+#include "exult_core_src/game.h"
+#include "exult_core_src/gamerend.h"
+
 namespace ScummVM {
 namespace Exult {
 
@@ -121,15 +126,23 @@ void ExultEngine::processInputEvents() {
 }
 
 void ExultEngine::updateGameLogic() {
-    // TODO: Call Exult core game state update function.
-    debug(1, "ExultEngine: updateGameLogic() called (placeholder).");
+    // Call Exult core game state update function.
+    // Assuming Exult::Game::get_ticks() and Exult::Game::set_ticks() are available.
+    // This is a simplified placeholder. Actual integration would involve more complex game loop management.
+    Exult::Game::set_ticks(Exult::Game::get_ticks() + 1); 
+    debug(1, "ExultEngine: updateGameLogic() called. Exult ticks: %u", Exult::Game::get_ticks());
 }
 
 void ExultEngine::renderFrame() {
     if (_graphicsAdapter) {
         _graphicsAdapter->renderExultFrame();
     }
-    debug(1, "ExultEngine: renderFrame() called (placeholder).");
+    // Call Exult core rendering function.
+    // Assuming Exult::Game_render is available and can be used for rendering.
+    // This is a simplified placeholder. Actual integration would involve passing rendering context.
+    Exult::Game_render renderer; 
+    renderer.paint_map(0, 0, 0, 0); // Placeholder call to a rendering function
+    debug(1, "ExultEngine: renderFrame() called.");
 }
 
 // --- ExultMetaEngine Implementation ---
@@ -178,15 +191,26 @@ PlainGameList ExultMetaEngine::getSupportedGames() const {
 
 DetectedGames ExultMetaEngine::detectGames(const Common::FSList &fslist, uint32 skipADFlags, bool skipIncomplete) {
     DetectedGames detectedGames;
-    // Placeholder for actual detection logic
+    debug(1, "ExultMetaEngine: detectGames() called. Implementing placeholder logic.");
     // Iterate through fslist and call identifyGame for each potential game path
-    // For now, just return an empty list
+    for (const Common::FSNode& fsNode : fslist) {
+        DetectedGame game;
+        game.path = fsNode.getPath();
+        const void* descriptor = nullptr;
+        if (identifyGame(game, &descriptor) == Common::kNoError) {
+            detectedGames.push_back(game);
+        }
+    }
     return detectedGames;
 }
 
 void ExultMetaEngine::dumpDetectionEntries() const {
-    // Placeholder for dumping detection entries
-    debug(1, "ExultMetaEngine: dumpDetectionEntries() called.");
+    debug(1, "ExultMetaEngine: dumpDetectionEntries() called. Placeholder implementation.");
+    // In a real scenario, this would iterate through supported games and print their detection info.
+    PlainGameList supportedGames = getSupportedGames();
+    for (const PlainGameDescriptor& desc : supportedGames) {
+        debug(1, "  Supported Game: ID=%s, Description=%s", desc.gameId.c_str(), desc.description.c_str());
+    }
 }
 
 // These are not part of MetaEngineDetection, but are needed for the engine to function
