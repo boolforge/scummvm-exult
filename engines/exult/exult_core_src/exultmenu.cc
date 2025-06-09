@@ -54,6 +54,10 @@
 #	include "ios_utils.h"
 #endif
 
+// TODO: Include ScummVM headers for SeekableReadStream and ExultFileAdapter
+// #include "common/streams.h"
+// #include "ExultEngine.h" // Assuming ExultEngine provides access to ExultFileAdapter
+
 using std::unique_ptr;
 
 #define MAX_GAMES 100
@@ -123,7 +127,7 @@ void create_scroller_menu(
 
 ExultMenu::ExultMenu(Game_window* gw) {
 	gwin              = gw;
-	ibuf              = gwin->get_win()->get_ib8();
+	ibuf              = gw->get_win()->get_ib8();
 	const char* fname = BUNDLE_CHECK(BUNDLE_EXULT_FLX, EXULT_FLX);
 	fontManager.add_font("CREDITS_FONT", fname, EXULT_FLX_FONT_SHP, 1);
 	fontManager.add_font("HOT_FONT", fname, EXULT_FLX_FONTON_SHP, 1);
@@ -518,28 +522,27 @@ BaseGameInfo* ExultMenu::run() {
 			TextScroller credits(
 					BUNDLE_CHECK(BUNDLE_EXULT_FLX, EXULT_FLX),
 					EXULT_FLX_CREDITS_TXT, fontManager.get_font("CREDITS_FONT"),
-					exult_flx.extract_shape(EXULT_FLX_EXTRAS_SHP));
+					exult_flx.extract_shape(EXULT_FLX_CREDITS_TXT_SHP, 0));
 			credits.run(gwin);
-			gwin->clear_screen(true);
-			gpal->apply();
-		} break;
-		case -2: {    // Exult Quotes
+			gpal->fade_in(c_fade_in_time);
+			break;
+		}
+		case -2: {    // Quotes
 			gpal->fade_out(c_fade_out_time);
 			TextScroller quotes(
 					BUNDLE_CHECK(BUNDLE_EXULT_FLX, EXULT_FLX),
 					EXULT_FLX_QUOTES_TXT, fontManager.get_font("CREDITS_FONT"),
-					exult_flx.extract_shape(EXULT_FLX_EXTRAS_SHP));
+					exult_flx.extract_shape(EXULT_FLX_QUOTES_TXT_SHP, 0));
 			quotes.run(gwin);
-			gwin->clear_screen(true);
-			gpal->apply();
-		} break;
-		case -1:    // Exit
+			gpal->fade_in(c_fade_in_time);
+			break;
+		}
 #ifdef __IPHONEOS__
-			SDL_OpenURL("https://exult.info/docs.php#iOS%20Guide");
+		case -1:    // Help
+			SDL_OpenURL("https://exult.info/docs.php#ios_help");
 			break;
 #else
-			gpal->fade_out(c_fade_out_time);
-			Audio::get_ptr()->stop_music();
+		case -1:    // Exit
 			throw quit_exception();
 #endif
 		default:
@@ -547,22 +550,30 @@ BaseGameInfo* ExultMenu::run() {
 				// Load the game:
 				gpal->fade_out(c_fade_out_time);
 				sel_game = gamemanager->get_game(choice);
-			} else if (choice >= MAX_GAMES && choice < 2 * MAX_GAMES) {
-				// Show the mods for the game:
-				gpal->fade_out(c_fade_out_time / 2);
+				break;
+			} else if (choice >= MAX_GAMES) {
 				sel_game = show_mods_menu(
 						gamemanager->get_game(choice - MAX_GAMES));
-				gwin->clear_screen(true);
-				gpal->apply();
+				// If we returned from the mods menu, we need to re-create the main
+				// menu.
+				if (sel_game == nullptr) {
+					calc_win();
+					logox      = centerx - exultlogo->get_width() / 2;
+					logoy      = centery - exultlogo->get_height() / 2;
+					first_game = 0;
+					menu       = create_main_menu(first_game);
+				}
+				break;
 			} else if (handle_menu_click(
 							   choice, first_game, last_page, pagesize)) {
 				menu = create_main_menu(first_game);
 				gwin->clear_screen(true);
 			}
-			break;
 		}
 	} while (sel_game == nullptr);
+
 	gwin->clear_screen(true);
-	Audio::get_ptr()->stop_music();
 	return sel_game;
 }
+
+
