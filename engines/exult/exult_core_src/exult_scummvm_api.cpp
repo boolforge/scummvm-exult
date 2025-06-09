@@ -5,6 +5,7 @@
 #include "keys.h"
 #include "keyactions.h"
 #include "Audio.h"
+#include "game.h" // Include for Game class and global 'game' pointer
 
 namespace Exult {
 
@@ -16,23 +17,20 @@ void processEvents() {
 }
 
 void updateLogic() {
-    // Placeholder for game logic update
-    // This will involve calling functions that advance the game state
-    // For now, we can just call some basic update functions if available
+    // Call Exult's game logic update function
     if (game) {
-        game->update_game_logic(); // Assuming game has an update_game_logic method
+        game->update_game_logic();
     }
 }
 
 void renderFrame() {
-    // Placeholder for rendering the game frame
-    // This will involve calling functions that draw the game to the screen
+    // Call Exult's rendering functions
     if (gwin) {
-        gwin->draw_game(); // Assuming gwin has a draw_game method
-        gwin->update_screen(); // Assuming gwin has an update_screen method
+        gwin->draw_game();
+        gwin->update_screen();
     }
 }
 
-}
+} // namespace Exult
 
 
