@@ -62,21 +62,21 @@ Common::Error ExultEngine::initialize(const Common::FSNode& gamePath, const Comm
 
     if (!_fileAdapter || !_graphicsAdapter || !_inputAdapter || !_audioAdapter) {
         error("ExultEngine: One or more adapters are null during initialize!");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
 
     // Initialize adapters first, as Exult core might depend on them
     if (!_fileAdapter->init(gamePath)) {
         error("ExultEngine: Failed to initialize File Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
     if (!_graphicsAdapter->init()) {
         error("ExultEngine: Failed to initialize Graphics Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
     if (!_audioAdapter->init()) {
         error("ExultEngine: Failed to initialize Audio Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
 
     _initialized = true;
@@ -100,7 +100,7 @@ Common::Error ExultEngine::run() {
     debug(1, "ExultEngine: run() called.");
     if (!_initialized) {
         warning("ExultEngine::run() called before successful initialization.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
 
     while (!shouldQuit()) {
@@ -122,12 +122,14 @@ void ExultEngine::processInputEvents() {
 
 void ExultEngine::updateGameLogic() {
     // TODO: Call Exult core game state update function.
+    debug(1, "ExultEngine: updateGameLogic() called (placeholder).");
 }
 
 void ExultEngine::renderFrame() {
     if (_graphicsAdapter) {
         _graphicsAdapter->renderExultFrame();
     }
+    debug(1, "ExultEngine: renderFrame() called (placeholder).");
 }
 
 // --- ExultMetaEngine Implementation ---
@@ -140,10 +142,21 @@ Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **des
     debug(1, "ExultMetaEngine: identifyGame() called for path: %s", game.path.toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
-    Common::FSNode gamedatDir = game.path.getChild("GAMEDAT");
-    Common::FSNode staticDir = game.path.getChild("STATIC");
+    // game.path is Common::Path, convert to Common::FSNode to use getChild
+    Common::FSNode gamePathFSNode(game.path);
+    Common::FSNode gamedatDir = gamePathFSNode.getChild("GAMEDAT");
+    Common::FSNode staticDir = gamePathFSNode.getChild("STATIC");
 
+    // Check for specific files within GAMEDAT and STATIC directories for more robust detection
+    bool isUltima7 = false;
     if (gamedatDir.exists() && staticDir.exists()) {
+        // Example: Check for specific files like "GAMEDAT/GAME.DAT" and "STATIC/STATIC.DAT"
+        if (gamedatDir.getChild("GAME.DAT").exists() && staticDir.getChild("STATIC.DAT").exists()) {
+            isUltima7 = true;
+        }
+    }
+
+    if (isUltima7) {
         game.engineId = getName();
         game.gameId = "ultima7"; // Placeholder game ID
         game.description = "Ultima VII: The Black Gate (Detected by Exult Engine)";
@@ -152,7 +165,7 @@ Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **des
         return Common::kNoError;
     }
 
-    return Common::kErrorSystem; // Indicate no game detected
+    return Common::Error(Common::kUnknownError); // Indicate no game detected
 }
 
 PlainGameList ExultMetaEngine::getSupportedGames() const {
