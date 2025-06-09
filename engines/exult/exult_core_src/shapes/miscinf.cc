@@ -5,6 +5,7 @@
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
+ *  the GNU General Public License as published by
  *  the Free Software Foundation; either version 2 of the License, or
  *  (at your option) any later version.
  *
@@ -44,6 +45,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+// TODO: Include ScummVM headers for SeekableReadStream and ExultFileAdapter
+// #include "common/streams.h"
+// #include "ExultEngine.h" // Assuming ExultEngine provides access to ExultFileAdapter
 
 using std::ifstream;
 using std::map;
@@ -104,7 +109,6 @@ public:
 			src.ignore(1);
 			const char chr = src.peek();
 			if (chr == 'x' || chr == 'X') {
-				src.ignore(1);
 				src >> hex;
 			} else {
 				src.unget();
@@ -224,8 +228,28 @@ public:
 			: table(tbl), erased_for_patch(false) {}
 
 	void parse_entry(
-			int index, istream& src, bool for_patch, int version) final;
-};
+			int index, istream& src, bool for_patch, int version) {
+		ignore_unused_variable_warning(index, version);
+	if (!erased_for_patch && for_patch) {
+		table.clear();
+	}
+	string line;
+	src >> line;
+	if (line == "static" || (GAME_BG && line == "bg")
+		|| (GAME_SI && line == "si")) {
+		table.emplace_back(PAPERDOL, -1);
+	} else if (line == "si") {
+		table.emplace_back("<SERPENT_STATIC>/paperdol.vga", -1);
+	} else if (GAME_SI && line == "flx") {
+		// ++++ FIXME: Implement in the future for SI paperdoll patches.
+		CERR("Paperdoll source file '" << line << "' is not implemented yet.");
+	} else if (GAME_BG && line == "flx") {
+		const str_int_pair& resource = game->get_resource("files/paperdolvga");
+		table.emplace_back(resource.str, resource.num);
+	} else {
+		CERR("Unknown paperdoll source file '" << line << "' was specified.");
+	}
+}
 
 class Def_av_shape_parser : public Shapeinfo_entry_parser {
 	map<bool, Base_Avatar_info>& table;
@@ -380,6 +404,10 @@ void Shapeinfo_lookup::Read_data_file(
 	auto value_or = [](std::optional<int> opt) {
 		return opt ? *opt : 1;
 	};
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* static_stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(file.c_str());
+	// Text_msg_file_reader static_reader(static_stream);
 	Text_msg_file_reader static_reader = [&]() {
 		if (GAME_BG || GAME_SI) {
 			std::string         file     = "config/" + std::string(fname);
@@ -397,6 +425,10 @@ void Shapeinfo_lookup::Read_data_file(
 		}
 		return Text_msg_file_reader(ds);
 	}();
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* patch_stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(file.c_str());
+	// Text_msg_file_reader patch_reader(patch_stream);
 	Text_msg_file_reader patch_reader = [&]() {
 		std::string file = "<PATCH>/" + std::string(fname) + ".txt";
 		if (!U7exists(file)) {
@@ -475,7 +507,7 @@ void Shapeinfo_lookup::setup_avatar_data() {
 		return;
 	}
 	avdata = make_unique<Avatar_data>();
-	std::array sections{"defaultshape"sv,      "baseracesex"sv,
+	std::array sections{"defaultshape"sv,      "baserace"sv,
 						"multiracial_table"sv, "unselectable_races_table"sv,
 						"petra_face_table"sv,  "usecode_info"sv};
 	std::array parsers = make_unique_array<Shapeinfo_entry_parser>(
@@ -563,80 +595,35 @@ vector<Skin_data>* Shapeinfo_lookup::GetSkinList() {
 	return &avdata->skins_table;
 }
 
-Skin_data* Shapeinfo_lookup::GetSkinInfo(int skin, bool sex) {
+Skin_data* Shapeinfo_lookup::GetSkinData(int skin_id, bool is_female) {
 	setup_avatar_data();
 	for (auto& elem : avdata->skins_table) {
-		if (elem.skin_id == skin && elem.is_female == sex) {
+		if (elem.skin_id == skin_id && elem.is_female == is_female) {
 			return &elem;
 		}
 	}
 	return nullptr;
 }
 
-Skin_data* Shapeinfo_lookup::GetSkinInfoSafe(
-		int skin, bool sex, bool sishapes) {
-	Skin_data* sk = GetSkinInfo(skin, sex);
-	if ((sk != nullptr)
-		&& (sishapes
-			|| (!IsSkinImported(sk->shape_num)
-				&& !IsSkinImported(sk->naked_shape)))) {
-		return sk;
-	}
-	sk = GetSkinInfo(GetDefaultAvSkin()->default_skin, sex);
-	// Prevent unavoidable problems. *Should* never be needed.
-	assert(sk
-		   && (sishapes
-			   || (!IsSkinImported(sk->shape_num)
-				   && !IsSkinImported(sk->naked_shape))));
-	return sk;
-}
-
-Skin_data* Shapeinfo_lookup::GetSkinInfoSafe(Actor* npc) {
-	const int  skin = npc->get_skin_color();
-	const bool sex  = npc->get_type_flag(Actor::tf_sex);
-	return GetSkinInfoSafe(
-			skin, sex, Shape_manager::get_instance()->have_si_shapes());
-}
-
-Skin_data* Shapeinfo_lookup::ScrollSkins(
-		int skin, bool sex, bool sishapes, bool ignoresex, bool prev,
-		bool sel) {
+bool Shapeinfo_lookup::IsSkinUnselectable(int skin_id) {
 	setup_avatar_data();
-	bool nsex   = sex;
-	int  nskin  = skin;
-	bool chskin = true;
-	while (true) {
-		if (ignoresex) {
-			nsex   = !nsex;
-			chskin = (nsex == avdata->base_av_info.default_female);
-		}
-		nskin = (nskin + ((prev != 0) ? Avatar_data::last_skin : 0) + chskin)
-				% (Avatar_data::last_skin + 1);
-		if (sel && !IsSkinSelectable(nskin)) {
-			continue;
-		}
-		Skin_data* newskin = GetSkinInfo(nskin, nsex);
-		if ((newskin != nullptr)
-			&& (sishapes
-				|| (!IsSkinImported(newskin->shape_num)
-					&& !IsSkinImported(newskin->naked_shape)))) {
-			return newskin;
-		}
+	auto it = avdata->unselectable_skins.find(skin_id);
+	if (it != avdata->unselectable_skins.end()) {
+		return it->second;
 	}
+	return false;
 }
 
-int Shapeinfo_lookup::GetNumSkins(bool sex) {
+int Shapeinfo_lookup::GetPetraFace(int shape_id) {
 	setup_avatar_data();
-	int cnt = 0;
-	for (auto& elem : avdata->skins_table) {
-		if (elem.is_female == sex) {
-			cnt++;
-		}
+	auto it = avdata->petra_table.find(shape_id);
+	if (it != avdata->petra_table.end()) {
+		return it->second;
 	}
-	return cnt;
+	return -1;
 }
 
-Usecode_function_data* Shapeinfo_lookup::GetAvUsecode(int type) {
+Usecode_function_data* Shapeinfo_lookup::GetAvatarUsecodeFun(int type) {
 	setup_avatar_data();
 	auto it = avdata->usecode_funs.find(type);
 	if (it != avdata->usecode_funs.end()) {
@@ -645,35 +632,9 @@ Usecode_function_data* Shapeinfo_lookup::GetAvUsecode(int type) {
 	return nullptr;
 }
 
-bool Shapeinfo_lookup::IsSkinSelectable(int skin) {
+int Shapeinfo_lookup::GetLastSkin() {
 	setup_avatar_data();
-	auto it = avdata->unselectable_skins.find(skin);
-	return it == avdata->unselectable_skins.end();
+	return Avatar_data::last_skin;
 }
 
-bool Shapeinfo_lookup::HasFaceReplacement(int npcid) {
-	setup_avatar_data();
-	auto it = avdata->petra_table.find(npcid);
-	if (it != avdata->petra_table.end()) {
-		return it->second != 0;
-	}
-	return npcid != 0;
-}
 
-int Shapeinfo_lookup::GetFaceReplacement(int facenum) {
-	setup_avatar_data();
-	Game_window* gwin = Game_window::get_instance();
-	if (gwin->get_main_actor()->get_flag(Obj_flags::petra)) {
-		auto it = avdata->petra_table.find(facenum);
-		if (it != avdata->petra_table.end()) {
-			return it->second;
-		}
-	}
-	return facenum;
-}
-
-void Shapeinfo_lookup::reset() {
-	data.reset();
-	avdata.reset();
-	Avatar_data::last_skin = 0;
-}
