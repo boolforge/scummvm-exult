@@ -24,6 +24,7 @@
 #include "exult_core_src/exult.h"
 #include "exult_core_src/game.h"
 #include "exult_core_src/gamerend.h"
+#include "exult_core_src/exult_scummvm_api.h"
 
 namespace ScummVM {
 namespace Exult {
@@ -111,13 +112,11 @@ Common::Error ExultEngine::run() {
         return Common::Error(Common::kUnknownError);
     }
 
-    // Call Exult's main game loop. This will likely block ScummVM's run loop.
-    // A more proper integration would involve refactoring Exult's main loop
-    // into smaller update/render functions that can be called by ScummVM's loop.
-    int exult_result = Exult::Play();
-    debug(1, "ExultEngine: Exult::Play() returned with result: %d", exult_result);
+    // ScummVM's main loop will call processInputEvents, updateGameLogic, and renderFrame.
+    // This function should ideally not block and just set up the engine to be driven by those calls.
+    // For now, the Exult::Play() call is removed, and the logic is moved to the respective methods.
 
-    debug(1, "ExultEngine: run() loop finished.");
+    debug(1, "ExultEngine: run() setup complete. ScummVM will drive the game loop.");
     return Common::kNoError;
 }
 
@@ -125,21 +124,21 @@ void ExultEngine::processInputEvents() {
     if (_inputAdapter) {
         _inputAdapter->processScummVMEvents();
     }
+    // Call Exult's event processing
+    Exult::processEvents();
 }
 
 void ExultEngine::updateGameLogic() {
-    // Exult's main loop (Exult::Play()) handles game logic updates.
-    // This function might become a no-op or be used for ScummVM-specific updates.
-    debug(1, "ExultEngine: updateGameLogic() called. Handled by Exult::Play().");
+    debug(1, "ExultEngine: updateGameLogic() called.");
+    Exult::updateLogic();
 }
 
 void ExultEngine::renderFrame() {
-    // Exult's main loop (Exult::Play()) handles rendering.
-    // This function might become a no-op or be used for ScummVM-specific rendering.
+    debug(1, "ExultEngine: renderFrame() called.");
+    Exult::renderFrame();
     if (_graphicsAdapter) {
-        _graphicsAdapter->renderExultFrame();
+        _graphicsAdapter->renderExultFrame(); // This might be redundant if Exult::renderFrame() already draws to the ScummVM surface
     }
-    debug(1, "ExultEngine: renderFrame() called. Handled by Exult::Play().");
 }
 
 // --- ExultMetaEngine Implementation ---
@@ -222,5 +221,7 @@ void ExultMetaEngine::freeInstance(Engine *engine) {
 
 } // namespace Exult
 } // namespace ScummVM
+
+
 
 
