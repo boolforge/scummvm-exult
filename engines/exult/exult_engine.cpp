@@ -84,8 +84,11 @@ Common::Error ExultEngine::initialize(const Common::FSNode& gamePath, const Comm
         return Common::Error(Common::kUnknownError);
     }
 
+    // Initialize Exult core
+    Exult::Init();
+
     _initialized = true;
-    debug(1, "ExultEngine: Placeholder initialization complete. Adapters initialized.");
+    debug(1, "ExultEngine: Placeholder initialization complete. Adapters and Exult core initialized.");
     return Common::kNoError;
 }
 
@@ -108,12 +111,11 @@ Common::Error ExultEngine::run() {
         return Common::Error(Common::kUnknownError);
     }
 
-    while (!shouldQuit()) {
-        processInputEvents();
-        updateGameLogic();
-        renderFrame();
-        // _system->yield(); // OSystem::yield() is not a direct member. Needs proper event loop integration.
-    }
+    // Call Exult's main game loop. This will likely block ScummVM's run loop.
+    // A more proper integration would involve refactoring Exult's main loop
+    // into smaller update/render functions that can be called by ScummVM's loop.
+    int exult_result = Exult::Play();
+    debug(1, "ExultEngine: Exult::Play() returned with result: %d", exult_result);
 
     debug(1, "ExultEngine: run() loop finished.");
     return Common::kNoError;
@@ -126,23 +128,18 @@ void ExultEngine::processInputEvents() {
 }
 
 void ExultEngine::updateGameLogic() {
-    // Call Exult core game state update function.
-    // Assuming Exult::Game::get_ticks() and Exult::Game::set_ticks() are available.
-    // This is a simplified placeholder. Actual integration would involve more complex game loop management.
-    Exult::Game::set_ticks(Exult::Game::get_ticks() + 1); 
-    debug(1, "ExultEngine: updateGameLogic() called. Exult ticks: %u", Exult::Game::get_ticks());
+    // Exult's main loop (Exult::Play()) handles game logic updates.
+    // This function might become a no-op or be used for ScummVM-specific updates.
+    debug(1, "ExultEngine: updateGameLogic() called. Handled by Exult::Play().");
 }
 
 void ExultEngine::renderFrame() {
+    // Exult's main loop (Exult::Play()) handles rendering.
+    // This function might become a no-op or be used for ScummVM-specific rendering.
     if (_graphicsAdapter) {
         _graphicsAdapter->renderExultFrame();
     }
-    // Call Exult core rendering function.
-    // Assuming Exult::Game_render is available and can be used for rendering.
-    // This is a simplified placeholder. Actual integration would involve passing rendering context.
-    Exult::Game_render renderer; 
-    renderer.paint_map(0, 0, 0, 0); // Placeholder call to a rendering function
-    debug(1, "ExultEngine: renderFrame() called.");
+    debug(1, "ExultEngine: renderFrame() called. Handled by Exult::Play().");
 }
 
 // --- ExultMetaEngine Implementation ---

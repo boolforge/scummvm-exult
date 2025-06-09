@@ -1,5 +1,11 @@
+/**
+ ** Exult.h - Multiplatform Ultima 7 game engine
+ **
+ ** Written: 7/22/98 - JSF
+ **/
 /*
- *  Copyright (C) 2001-2022  The Exult Team
+ *  Copyright (C) 1998-1999  Jeffrey S. Freedman
+ *  Copyright (C) 2000-2022  The Exult Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,84 +25,51 @@
 #ifndef EXULT_H
 #define EXULT_H
 
-#include "mouse.h"
+#include "exult_constants.h"
+#include "exult_types.h"
 
-class Actor;
-class Cheat;
+#include <string>
+
 class Configuration;
-class Game_window;
 class KeyBinder;
-class Tile_coord;
-class Paintable;
 class GameManager;
-class ShortcutBar_gump;
+class Game_window;
 class TouchUI;
 
-/*
- *  Get a click, or, optionally, a keyboard char.
- *
- *  Output: false if user hit ESC.
- *      Chr gets keyboard char., or 0 if it's was a mouse click.
- */
-extern bool g_waiting_for_click;
-
-extern bool Get_click(
-		int& x, int& y,               // Location returned (if not ESC).
-		Mouse::Mouse_shapes shape,    // Mouse shape to use.
-		char*               chr     = nullptr,    // Char. returned if not null.
-		bool                drag_ok = false,      // Can drag while here.
-		Paintable*          paint   = nullptr,    // Paint over everything else.
-		bool rotate_colors = false    // If the palette colors should rotate.
-);
-
-/*
- *  Make a screenshot of the current screen display
- */
-extern void make_screenshot(
-		bool silent
-		= false    // If false, will display a success/failure message
-);
-
-/*
- *  Wait for someone to stop walking.  If a timeout is given, at least
- *  one animation cycle will still always occur.
- */
-
-extern void Wait_for_arrival(
-		Actor*            actor,          // Whom to wait for.
-		const Tile_coord& dest,           // Where he's going.
-		long              maxticks = 0    // Max. # msecs. to wait, or 0.
-);
-
-extern void change_gamma(bool down);
-extern void increase_scaleval();
-extern void decrease_scaleval();
-extern void setup_video(
-		bool fullscreen, int setup_video_type, int resx = 0, int resy = 0,
-		int gw = 0, int gh = 0, int scaleval = 0, int scaler = 0,
-		Image_window::FillMode fillmode    = Image_window::Fill,
-		int                    fill_scaler = 0);
-
-enum setup_video_type {
-	VIDEO_INIT        = 0,    // read and write initial settings and create gwin
-	TOGGLE_FULLSCREEN = 1,    // toggle fullscreen using proper settings
-	MENU_INIT  = 2,    // read and set initial settings for video gump menu
-	SET_CONFIG = 3     // sets the config settings (doesn't write)
-};
+extern Configuration* config;
+extern KeyBinder*     keybinder;
+extern GameManager*   gamemanager;
+extern Game_window*   gwin;
+extern TouchUI*       touchui;
 
 enum quitting_time_enum {
-	QUIT_TIME_NO      = 0,
-	QUIT_TIME_YES     = 1,
-	QUIT_TIME_RESTART = 2
+	QUIT_TIME_NO,
+	QUIT_TIME_NOW,
+	QUIT_TIME_AFTER_MENU,
+	QUIT_TIME_AFTER_GAME
 };
-
-extern KeyBinder*     keybinder;
-extern Configuration* config;
-extern GameManager*   gamemanager;
 
 extern quitting_time_enum quitting_time;
 
-extern ShortcutBar_gump* g_shortcutBar;
-extern TouchUI*          touchui;
+extern bool intrinsic_trace;
+extern int  usecode_trace;
+extern bool combat_trace;
+extern int  save_compression;
+extern bool ignore_crc;
+
+extern bool g_waiting_for_click;
+
+extern int current_scaleval;
+
+extern void getVersionInfo(std::ostream& os);
+extern void Free_text();
+extern void setup_program_paths();
+extern void verify_files(const char* game_path);
+
+// Expose Init() and Play() for ScummVM integration
+extern void Init();
+extern int Play();
 
 #endif
+
+
