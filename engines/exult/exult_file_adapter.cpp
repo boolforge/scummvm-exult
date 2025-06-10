@@ -58,7 +58,18 @@ bool ExultFileAdapter::init(const Common::FSNode& gamePath) {
     // _exultFileManager->setBasePath(_gamePathNode.getPath().c_str());
     // _exultFileManager->setStreamOpener(this); // If U7FM can take a helper to open streams
 
-    debug(1, "ExultFileAdapter: Placeholder initialization for U7FileManager interaction.");
+    // Set the ScummVM file adapter for the U7FileManager
+    // U7FileManager uses a static pointer for the adapter.
+    ExultCore::U7FileManager::set_scummvm_file_adapter(this);
+
+    // TODO: Further U7FileManager initialization might be needed,
+    // for example, informing it about the base game path if its internal
+    // path logic needs to be explicitly primed. For now, we've set the adapter.
+    // Exult's U7FileManager might also need its 'self' static pointer set
+    // if ScummVM is now managing its lifecycle. This depends on how ExultEngine
+    // creates and manages U7FileManager.
+
+    debug(1, "ExultFileAdapter: U7FileManager's ScummVM adapter has been set.");
     return true;
 }
 

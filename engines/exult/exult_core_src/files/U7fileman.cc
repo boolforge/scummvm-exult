@@ -86,65 +86,88 @@ U7file* U7FileManager::get_file_object(const File_spec& s, bool allow_errors) {
 			// !!! CRITICAL TODO: Refactor U7file types (IFFFile, FlexFile, IFFBuffer, etc.)
 			// to be constructible from a ScummVM::Common::SeekableReadStream.
 			// This is the core of VFS integration for Exult_Engine_s file types.
-			// For this incremental step, 'uf' is NOT created from 'stream' yet.
-			// The U7file object, once created, should take ownership of the stream.
-			delete stream; // TEMPORARY: Delete stream as it's not used by U7file types yet.
-			stream = nullptr;
-			// Fall through to old logic for now, with a warning. This is NOT the final state.
-			ScummVM::warning("U7FileManager: Stream for '%s' obtained via ScummVM VFS, but U7file types not yet adapted. Falling back to old logic for this attempt.", s.name.c_str());
-		} else {
+			// The ScummVM stream is now opened. We need to determine the file type
+			// and instantiate the correct U7file subclass.
+			// The U7file object will take ownership of the stream via std::unique_ptr.
+			std::unique_ptr<ScummVM::Common::SeekableReadStream> stream_owner(stream); // Take ownership
+
+			// Type sniffing:
+			// Order can be important. IFF and Flex have strong magic numbers.
+			// Table is more heuristic. Flat is often a fallback.
+			// Ensure stream position is reset before passing to constructors.
+
+			if (IFF::is_iff(stream_owner.get())) {
+				ScummVM::debug(1, "U7FileManager: Identified '%s' as IFF.", s.name.c_str());
+				stream_owner->seek(0, SEEK_SET); // Reset for constructor
+				uf = std::make_unique<IFF>(s, std::move(stream_owner));
+			} else if (Flex_header::is_flex(stream_owner.get())) { // is_flex is in Flex_header
+				ScummVM::debug(1, "U7FileManager: Identified '%s' as Flex.", s.name.c_str());
+				stream_owner->seek(0, SEEK_SET); // Reset for constructor
+				uf = std::make_unique<Flex>(s, std::move(stream_owner));
+			} else if (Table::is_table(stream_owner.get())) {
+				ScummVM::debug(1, "U7FileManager: Identified '%s' as Table.", s.name.c_str());
+				stream_owner->seek(0, SEEK_SET); // Reset for constructor
+				uf = std::make_unique<Table>(s, std::move(stream_owner));
+			} else {
+				// Fallback to Flat if no other type identified, or if specific logic determines it's Flat.
+				// Flat files don't have a common magic number, often identified by name or context.
+				// For now, assume if it's not other types, it might be Flat.
+				// This could be refined (e.g. check s.name against known flat files).
+				ScummVM::debug(1, "U7FileManager: Assuming '%s' is Flat (no other type identified).", s.name.c_str());
+				stream_owner->seek(0, SEEK_SET); // Reset for constructor
+				uf = std::make_unique<Flat>(s, std::move(stream_owner));
+			}
+
+			// Check if the U7file object was successfully created and initialized (e.g. stream not reset)
+			if (uf && uf->hasStream()) { // hasStream() checks if _scummvmStream is valid
+				ScummVM::debug(1, "U7FileManager: Successfully created U7file object for '%s' with ScummVM stream.", s.name.c_str());
+			} else {
+				ScummVM::warning("U7FileManager: Failed to create U7file object or it invalidated the stream for '%s'.", s.name.c_str());
+				// uf might be null or !uf->hasStream(). If stream_owner still holds the stream (e.g. make_unique failed or uf constructor reset its own ptr),
+				// it will be deleted when stream_owner goes out of scope. If it was moved to uf, and uf failed init and reset its own ptr,
+				// then uf's destructor handles its unique_ptr.
+				if (uf) uf.reset(); // Ensure uf is null if creation failed to pass to old logic
+				// If stream_owner was not moved, it will delete the stream here.
+				// If it was moved, uf is responsible or it's already null.
+			}
+
+		} else { // stream == nullptr or !stream->isOpen()
 			if (stream) delete stream; // Clean up if created but not open
-			ScummVM::debug(1, "U7FileManager: Failed to open '%s' via ScummVM VFS or stream not usable. Falling back to old logic.", s.name.c_str());
+			ScummVM::debug(1, "U7FileManager: Failed to open '%s' via ScummVM VFS or stream not usable.", s.name.c_str());
 		}
 	}
 
-	// Original Exult file opening logic (used if adapter not set, or if VFS path above doesn't yet populate 'uf')
-	// This entire block will be replaced once U7file types are adapted for ScummVM streams.
-	if (!uf) { // Only if 'uf' wasn't (or couldn't be) created via ScummVM path yet
+
+	// If 'uf' was not successfully created with a ScummVM stream, then 'uf' will be nullptr here.
+	// The original Exult file opening logic is removed as we now exclusively use ScummVM VFS.
+	// If _scummvm_file_adapter is not set, or if stream opening/typing fails, 'uf' remains null.
+
+	if (!uf) { // This means ScummVM VFS path failed or adapter not set
 		if (!_scummvm_file_adapter) {
-			ScummVM::debug(2, "U7FileManager: ScummVM File Adapter not set. Using original Exult file logic for '%s'.", s.name.c_str());
+			ScummVM::warning("U7FileManager: ScummVM File Adapter not set. Cannot open '%s'.", s.name.c_str());
+		} else {
+			// This path means adapter was set, but stream opening or U7file creation failed.
+			// Specific error/warning already logged above.
 		}
-
-		if (s.index >= 0) { // This implies an archive or multi-part file, IExultDataSource handles this.
-							// IExultDataSource itself uses direct file operations.
-			auto data = make_unique<IExultDataSource>(s.name, s.index);
-			if (data->good()) {
-				if (IFF::is_iff(data.get())) {
-					uf = std::make_unique<IFFBuffer>(s, std::move(data));
-				} else if (Flex::is_flex(data.get())) {
-					uf = std::make_unique<FlexBuffer>(s, std::move(data));
-				} else if (Table::is_table(data.get())) {
-					uf = std::make_unique<TableBuffer>(s, std::move(data));
-				} else if (Flat::is_flat(data.get())) {
-					uf = std::make_unique<FlatBuffer>(s, std::move(data));
-				}
-			}
-		} else { // This implies a standalone file.
-				 // The U7file subclasses (IFFFile, etc.) use direct file operations.
-			if (IFF::is_iff(s.name)) {
-				uf = std::make_unique<IFFFile>(s.name);
-			} else if (Flex::is_flex(s.name)) {
-				uf = std::make_unique<FlexFile>(s.name);
-			} else if (Table::is_table(s.name)) {
-				uf = std::make_unique<TableFile>(s.name);
-			} else if (Flat::is_flat(s.name)) {
-				uf = std::make_unique<FlatFile>(s.name);
-			}
-		}
+		// Original logic for s.index and direct file opening is removed.
+		// All file access must now go through ScummVM VFS.
+		// If we reach here, it means the file could not be processed via ScummVM VFS.
 	}
 
-	if (uf == nullptr) {
+
+	if (uf == nullptr) { // Check if uf is still null after all attempts
 		if (!allow_errors) {
-			ScummVM::error("U7FileManager: Failed to get file object for '%s' and errors are not allowed.", s.name.c_str());
+			ScummVM::error("U7FileManager: Failed to get file object for '%s' (ScummVM VFS path). Not found or type unknown/error.", s.name.c_str());
 			throw file_open_exception(s.name);
 		}
 		ScummVM::debug(1, "U7FileManager: Failed to get file object for '%s', returning nullptr (errors allowed).", s.name.c_str());
 		return nullptr;
 	}
 
+	// Successfully created a U7file object (uf) using ScummVM stream.
 	U7file* pt = uf.get();
-	file_list[s] = std::move(uf);
-	ScummVM::debug(2, "U7FileManager: Successfully obtained U7file for '%s' (possibly via old logic).", s.name.c_str());
+	file_list[s] = std::move(uf); // Store the new U7file object in the map
+	ScummVM::debug(1, "U7FileManager: Successfully obtained and stored U7file for '%s' via ScummVM VFS.", s.name.c_str());
 	return pt;
 }
 

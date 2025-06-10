@@ -5,6 +5,7 @@
 #include "common/system.h"
 #include "common/debug.h"
 #include "audio/mixer.h"
+#include <cstring> // For memset
 
 // Actual Exult includes for its audio handling classes
 // Paths are relative to the engines/exult/ directory where this .cpp file resides.
@@ -27,8 +28,10 @@ ExultAudioAdapter::ExultAudioAdapter(OSystem* system, Audio::Mixer* mixer,
     if (!_mixer) {
         error("ExultAudioAdapter: ScummVM Mixer pointer is null!");
     }
+    // _exultAudioSystem may be null at this point if Audio::Init() hasn't been called yet by ExultEngine.
+    // It will be fetched in this->init().
     if (!_exultAudioSystem) {
-        warning("ExultAudioAdapter: Exult Audio system pointer is null at construction!");
+        debug(1, "ExultAudioAdapter: Exult Audio system pointer is null at construction (this is expected).");
     }
 }
 
@@ -39,52 +42,103 @@ ExultAudioAdapter::~ExultAudioAdapter() {
 
 bool ExultAudioAdapter::init() {
     debug(1, "ExultAudioAdapter: init() called.");
+
+    // Fetch the ExultCore::Audio singleton instance now that ExultCore::Audio::Init() should have been called by ExultEngine.
+    if (!_exultAudioSystem) {
+        _exultAudioSystem = ExultCore::Audio::get_ptr();
+    }
+
     if (!_osystem || !_mixer || !_exultAudioSystem) {
-        error("ExultAudioAdapter: Cannot init, essential pointers are null (OSystem, Mixer, or ExultAudioSystem).");
+        error("ExultAudioAdapter: Cannot init, essential pointers are null (OSystem, Mixer, or ExultAudioSystem after get_ptr).");
         return false;
     }
 
-    // TODO: Initialize Exult_Engine_s audio system (ExultCore::Audio) here.
-    // This will involve:
-    // 1. Configuring Exult_Engine_s audio system to output samples in a format ScummVM can consume.
-    // 2. If this adapter acts as an Audio::Stream for ScummVM, register it with _mixer.
-    //    _channelId = _mixer->playStream(this, Audio::MixPriority::MUSIC, Audio::MixMode::STEREO_INTERLEAVED);
-    //    if (_channelId == Audio::ChannelId::INVALID) { ... error ... }
-    // 3. If Exult_Engine_s audio system uses a callback mechanism, provide a static callback function
-    //    that calls a method on this adapter instance to fill ScummVM_Engine_s buffers.
+    // Configure ExultCore::Audio for ScummVM mode.
+    Audio::MixerCaps caps = _mixer->getCapabilities();
+    // Exult typically uses 16-bit audio. We assume stereo here, but Exult's internal mixer might be mono
+    // or configurable. For now, align with typical ScummVM expectations.
+    // The actual number of channels Exult's mixer produces should be handled in ExultCore::Audio::getMixedAudio.
+    int desiredChannels = caps.channels == Audio::MixMode::MONO ? 1 : 2;
+    _exultAudioSystem->setScummVMMode(true, caps.preferredRate, desiredChannels);
 
-    // Example: Tell Exult_Engine_s audio system about ScummVM_Engine_s mixer capabilities (sample rate, format)
-    // Audio::MixerCaps caps = _mixer->getCapabilities();
-    // _exultAudioSystem->initDevice(caps.preferredRate, caps.format, caps.channels);
+    // ExultCore::Audio::Init() was already called by ExultEngine.
+    // Here, we might need to trigger other specific Exult audio initializations
+    // that should happen *after* mode setting, e.g., loading SFX resources.
+    // This depends on Exult's internal audio system structure.
+    // For example, if Audio::Init_sfx() is relevant:
+    // _exultAudioSystem->Init_sfx(); // Example, if needed.
 
-    debug(1, "ExultAudioAdapter: Placeholder initialization complete.");
+    // Register this adapter as an audio stream with ScummVM's mixer.
+    // The priority and mode should match what Exult will provide.
+    // Assuming Exult provides interleaved stereo.
+    _channelId = _mixer->playStream(this, Audio::MixPriority::MUSIC_AND_EFFECTS, Audio::MixMode::STEREO_INTERLEAVED, caps.preferredRate);
+
+    if (_channelId == Audio::ChannelId::INVALID) {
+        error("ExultAudioAdapter: Failed to register Exult audio stream with ScummVM mixer.");
+        // Should we call _exultAudioSystem->setScummVMMode(false, 0, 0) here?
+        return false;
+    }
+
+    debug(1, "ExultAudioAdapter: Initialization complete. Registered with ScummVM mixer on channel %d.", (int)_channelId);
     return true;
 }
 
 void ExultAudioAdapter::shutdown() {
     debug(1, "ExultAudioAdapter: shutdown() called.");
-    // TODO: Properly shut down Exult_Engine_s audio system and release any resources.
-    // if (_channelId != Audio::ChannelId::INVALID && _mixer) {
-    //     _mixer->stopChannel(_channelId);
-    //     _channelId = Audio::ChannelId::INVALID;
-    // }
-    // if (_exultAudioSystem) {
-    //     _exultAudioSystem->shutdownDevice();
+
+    // Stop and unregister the stream from ScummVM's mixer.
+    if (_channelId != Audio::ChannelId::INVALID && _mixer) {
+        _mixer->stopChannel(_channelId);
+        _channelId = Audio::ChannelId::INVALID;
+        debug(1, "ExultAudioAdapter: Unregistered stream from ScummVM mixer.");
+    }
+
+    // Potentially tell Exult's audio system to shut down or revert from ScummVM mode.
+    // Note: ExultCore::Audio::Destroy() is static and deletes the singleton.
+    // We should not call it here if ExultEngine might be reinitialized later.
+    // Instead, call specific cleanup methods if they exist.
+    if (_exultAudioSystem) {
+        // _exultAudioSystem->stop_music(); // Example
+        // _exultAudioSystem->stop_sound_effects(); // Example
+        // _exultAudioSystem->setScummVMMode(false, 0, 0); // Revert mode if appropriate
+        // For now, Exult's Audio::Destroy() will handle its internal cleanup when ExultEngine is destroyed.
+        debug(1, "ExultAudioAdapter: Exult audio system cleanup (if any specific calls needed) would be here.");
+    }
+}
+
+// ScummVM Audio::Stream interface implementation
     // }
 }
 
-// If implementing as an Audio::Stream for ScummVM:
-// bool ExultAudioAdapter::getSamples(int16 *stream, int length) {
-//     if (!_exultAudioSystem) {
-//         // Fill with silence if Exult audio is not ready
-//         memset(stream, 0, length * sizeof(int16));
-//         return true; // Or false if it_s an error state
-//     }
-//     // TODO: Request _exultAudioSystem to fill the `stream` buffer with `length` samples.
-//     // This might involve format conversion if Exult_Engine_s native format differs from ScummVM_Engine_s mixer format.
-//     // return _exultAudioSystem->getAudioData(stream, length);
-//     return true; // Placeholder
-// }
+// ScummVM Audio::Stream interface implementation
+bool ExultAudioAdapter::getSamples(int16 *stream, int length) {
+    if (!_exultAudioSystem || !_exultAudioSystem->is_audio_enabled()) {
+        // Fill with silence if Exult audio is not ready or explicitly disabled in Exult
+        memset(stream, 0, length * sizeof(int16)); // length is number of int16 samples
+        return true;
+    }
+    // Request mixed audio data from ExultCore::Audio.
+    // `length` is the total number of int16 samples ScummVM's mixer expects.
+    int samples_read = _exultAudioSystem->getMixedAudio(stream, length);
+
+    // If ExultCore::Audio provided fewer samples than requested, fill the remainder with silence.
+    if (samples_read < length) {
+        // Should not happen if getMixedAudio is implemented correctly to fill 'length' samples
+        // or if it returns the actual number of samples it could fill (which should be 'length' or 0).
+        // If it returns 0 (e.g. error or no data), the whole buffer should be silent.
+        // If it returns N < length, that means it partially filled.
+        debug(2, "ExultAudioAdapter::getSamples: ExultCore::Audio::getMixedAudio returned %d samples, expected %d. Filling remainder with silence.", samples_read, length);
+        memset(stream + samples_read, 0, (length - samples_read) * sizeof(int16));
+    } else if (samples_read > length) {
+        // This would be an error in ExultCore::Audio::getMixedAudio implementation.
+        error("ExultAudioAdapter::getSamples: ExultCore::Audio::getMixedAudio returned %d samples, but only %d were requested!", samples_read, length);
+        // Potentially truncate or handle, but this indicates a deeper issue. For now, ScummVM mixer will only use `length`.
+    }
+    // If samples_read == length, buffer is correctly filled.
+    // If samples_read == 0, buffer (hopefully already zeroed by getMixedAudio or here) is silent.
+
+    return true; // Always return true as we handle silence filling.
+}
 
 // Placeholder implementations for control methods
 // void ExultAudioAdapter::playSoundEffect(int soundId) {

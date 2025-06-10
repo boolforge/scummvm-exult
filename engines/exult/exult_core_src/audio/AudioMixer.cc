@@ -74,54 +74,83 @@ using namespace Pentagram;
 
 AudioMixer* AudioMixer::the_audio_mixer = nullptr;
 
+void AudioMixer::setScummVMOutputMode(bool enabled) {
+	_isScummVMOutputMode = enabled;
+	std::cout << "AudioMixer: ScummVM Output Mode " << (enabled ? "ENABLED" : "DISABLED") << std::endl;
+	if (_isScummVMOutputMode && device) {
+		// If switching to ScummVM mode and SDL device was open, close it.
+		std::cout << "AudioMixer: Closing existing SDL audio device due to ScummVM mode." << std::endl;
+		device.reset(); // This will call SDLAudioDevice destructor, which closes SDL audio.
+		audio_ok = false; // Mark SDL audio as not OK, but mixer can still function for sample provision.
+	}
+	// If switching from ScummVM mode to standalone, SDL audio would need to be reinitialized.
+	// This is not currently handled here; assumes mode is set before full initialization.
+}
+
 AudioMixer::AudioMixer(int sample_rate_, bool stereo_, int num_channels_)
 		: audio_ok(false), sample_rate(sample_rate_), stereo(stereo_),
-		  midi(nullptr), midi_volume(255), id_counter(0) {
+		  midi(nullptr), midi_volume(255), id_counter(0), _isScummVMOutputMode(false) { // Ensure _isScummVMOutputMode is initialized
 	the_audio_mixer = this;
 
-	std::cout << "Creating AudioMixer..." << std::endl;
+	std::cout << "Creating AudioMixer... Target Sample Rate: " << sample_rate_ << " Stereo: " << stereo_ << std::endl;
 
-	SDL_AudioSpec desired{};
-	SDL_AudioSpec obtained;
+	// _isScummVMOutputMode might be set by ExultCore::Audio calling setScummVMOutputMode()
+	// *before* this constructor if ExultCore::Audio creates Pentagram::AudioMixer explicitly after setting its own mode.
+	// However, current ExultCore::Audio::Init creates Pentagram::AudioMixer directly.
+	// So, Pentagram::AudioMixer needs to be told about ScummVM mode by ExultCore::Audio *after* construction,
+	// or ExultCore::Audio needs to pass a flag to this constructor.
+	// Let's assume ExultCore::Audio will call setScummVMOutputMode() on the created instance.
+	// The constructor will then proceed based on the initial _isScummVMOutputMode (false).
+	// If ExultCore::Audio::Init then calls setScummVMOutputMode(true) and re-configures, that's one path.
+	// For now, constructor behaves as it did, but SDL parts are conditional.
 
-	desired.format   = AUDIO_S16SYS;
-	desired.freq     = sample_rate_;
-	desired.channels = stereo_ ? 2 : 1;
-	desired.callback = sdlAudioCallback;
-	desired.userdata = this;
+	if (!_isScummVMOutputMode) {
+		SDL_AudioSpec desired{};
+		SDL_AudioSpec obtained;
 
-	// Set update rate to 30 Hz, or there abouts. This should be more than
-	// adequate for everyone. Note: setting this to 1 Hz (/1) causes Exult to
-	// hang on MacOS.
-	desired.samples = 1;
-	const int SAMPLE_BUFFER_PER_SECOND = 30;
-	while (desired.samples <= desired.freq / SAMPLE_BUFFER_PER_SECOND) {
-		desired.samples <<= 1;
-	}
+		desired.format   = AUDIO_S16SYS;
+		desired.freq     = sample_rate_;
+		desired.channels = stereo_ ? 2 : 1;
+		desired.callback = sdlAudioCallback;
+		desired.userdata = this;
 
-	// Open SDL Audio (even though we may not need it)
-	SDL_InitSubSystem(SDL_INIT_AUDIO);
-	const SDL_AudioDeviceID dev = SDL_OpenAudioDevice(
-			nullptr, 0, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
-	audio_ok = (dev != 0);
-
-	if (audio_ok) {
-		pout << "Audio opened using format: " << obtained.freq << " Hz "
-			 << static_cast<int>(obtained.channels) << " Channels" << std::endl;
-		device = std::make_unique<SDLAudioDevice>(dev);
-		{
-			const std::lock_guard<SDLAudioDevice> lock(*device);
-			sample_rate = obtained.freq;
-			stereo      = obtained.channels == 2;
-
-			internal_buffer.resize((obtained.size + 1) / 2);
-			for (int i = 0; i < num_channels_; i++) {
-				channels.emplace_back(sample_rate, stereo);
-			}
+		desired.samples = 1;
+		const int SAMPLE_BUFFER_PER_SECOND = 30;
+		while (desired.samples <= desired.freq / SAMPLE_BUFFER_PER_SECOND) {
+			desired.samples <<= 1;
 		}
 
-		// GO GO GO!
-		device->unpause();
+		SDL_InitSubSystem(SDL_INIT_AUDIO); // Safe to call multiple times
+		const SDL_AudioDeviceID dev = SDL_OpenAudioDevice(
+				nullptr, 0, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
+		audio_ok = (dev != 0);
+
+		if (audio_ok) {
+			std::cout << "AudioMixer: SDL Audio opened using format: " << obtained.freq << " Hz "
+				 << static_cast<int>(obtained.channels) << " Channels" << std::endl;
+			device = std::make_unique<SDLAudioDevice>(dev);
+			// Update with obtained values if SDL changed them
+			sample_rate = obtained.freq;
+			stereo      = obtained.channels == 2;
+			internal_buffer.resize((obtained.size + 1) / 2); // For SDL callback
+			device->unpause(); // Start SDL audio playback
+		} else {
+			std::cerr << "AudioMixer: Failed to open SDL audio device: " << SDL_GetError() << std::endl;
+		}
+	} else {
+		// In ScummVM mode, we don't open an SDL device.
+		// Mixer is "ok" in terms of being able to mix, just not outputting via SDL.
+		audio_ok = true;
+		// internal_buffer for getMixedOutputSamples might need resizing based on ScummVM's expected buffer size,
+		// but MixAudio takes the buffer as an argument, so it's okay.
+		// ScummVM will provide the buffer.
+		std::cout << "AudioMixer: Initialized in ScummVM Output Mode. SDL device NOT opened." << std::endl;
+	}
+
+	// Initialize channels regardless of output mode
+	// Channels need correct sample_rate and stereo settings from the start.
+	for (int i = 0; i < num_channels_; i++) {
+		channels.emplace_back(sample_rate, stereo);
 	}
 }
 
@@ -425,11 +454,12 @@ void AudioMixer::sdlAudioCallback(void* userdata, Uint8* stream, int len) {
 }
 
 void AudioMixer::MixAudio(sint16* stream, uint32 bytes) {
-	if (!audio_ok) {
+	// audio_ok now means "mixer is usable", not necessarily "SDL device is open"
+	if (!audio_ok && !_isScummVMOutputMode) { // Only return if not ScummVM mode and not ok
 		return;
 	}
 	std::memset(stream, 0, bytes);
-	if (midi) {
+	if (midi) { // MIDI should also work in ScummVM mode if MyMidiPlayer outputs to buffer
 		midi->produceSamples(stream, bytes);
 	}
 	for (auto& channel : channels) {
@@ -439,11 +469,48 @@ void AudioMixer::MixAudio(sint16* stream, uint32 bytes) {
 	}
 }
 
+// Method for ScummVM to pull audio
+int AudioMixer::getMixedOutputSamples(int16* buffer, int num_frames) {
+	if (!_isScummVMOutputMode) {
+		// This method should ideally not be called if not in ScummVM mode.
+		// Or, it could simulate filling a buffer even for SDL output, though less efficient.
+		std::cerr << "AudioMixer::getMixedOutputSamples called but not in ScummVMOutputMode!" << std::endl;
+		memset(buffer, 0, num_frames * (stereo ? 2 : 1) * sizeof(int16));
+		return 0;
+	}
+	if (!audio_ok) { // In ScummVM mode, audio_ok means mixer is ready.
+		memset(buffer, 0, num_frames * (stereo ? 2 : 1) * sizeof(int16));
+		return 0;
+	}
+
+	uint32 bytes_to_mix = num_frames * (stereo ? 2 : 1) * sizeof(int16);
+
+	// TODO: Add locking if Exult game logic can modify channels vector or MIDI state concurrently.
+	// SDL_LockAudioDevice(dev) was used in SDL callback context.
+	// If Exult's main loop runs in a different thread than ScummVM's audio callback,
+	// then access to shared data (channels, midi player state) needs protection.
+	// For now, assuming single-threaded access for simplicity during this call.
+	// std::lock_guard<std::mutex> lock(_mixer_mutex); // Hypothetical mutex
+
+	MixAudio(buffer, bytes_to_mix);
+
+	return num_frames * (stereo ? 2 : 1); // Return number of int16 samples written
+}
+
+
 void AudioMixer::openMidiOutput() {
 	if (midi) {
 		return;
 	}
-	if (!audio_ok) {
+	if (_isScummVMOutputMode) { // Do not open direct MIDI device if ScummVM is managing audio
+		std::cout << "AudioMixer: In ScummVM Output Mode, not opening direct MIDI output." << std::endl;
+		// MyMidiPlayer might still be needed for its sample generation capabilities if it can do that.
+		// If MyMidiPlayer *only* talks to a system MIDI device, then it's less useful here.
+		// For now, assume MyMidiPlayer::produceSamples still works for PCM generation.
+		// If Exult's MIDI handling is to be fully integrated, MyMidiPlayer should send MIDI events to ScummVM.
+		return;
+	}
+	if (!audio_ok) { // In non-ScummVM mode, audio_ok implies SDL device is ok.
 		return;
 	}
 

@@ -338,7 +338,14 @@ using ParseActionMap = std::map<std::string, const Action*>;
 static ParseKeyMap    keys;
 static ParseActionMap actions;
 
+KeyBinder* KeyBinder::s_instance = nullptr; // Define static instance
+
+KeyBinder* KeyBinder::get_instance() { // Implement static getter
+	return s_instance;
+}
+
 KeyBinder::KeyBinder() {
+	s_instance = this; // Assign instance in constructor
 	FillParseMaps();
 }
 

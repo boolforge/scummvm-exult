@@ -6,7 +6,8 @@ WRAPPER_OBJS := \
 	exult_graphics_adapter.o \
 	exult_input_adapter.o \
 	exult_audio_adapter.o \
-	exult_file_adapter.o
+	exult_file_adapter.o \
+	exult_keymap.o
 
 # Object files for Exult core
 # This list needs to be comprehensive and accurate based on Exult_Engine_s build requirements.

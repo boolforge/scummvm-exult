@@ -59,6 +59,7 @@ using KeyMap = std::map<SDL_Keysym, ActionType, ltSDLkeysym>;
 class KeyBinder {
 private:
 	KeyMap bindings;
+	static KeyBinder* s_instance; // Static instance pointer
 
 	std::vector<std::string> keyhelp;
 	std::vector<std::string> cheathelp;
@@ -68,6 +69,7 @@ private:
 	KeyMap::const_iterator   TranslateEvent(const SDL_Event& ev) const;
 
 public:
+	static KeyBinder* get_instance(); // Static getter
 	KeyBinder();
 	/* Add keybinding */
 	void AddKeyBinding(

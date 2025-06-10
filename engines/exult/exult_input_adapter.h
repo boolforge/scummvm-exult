@@ -11,7 +11,7 @@
 // Based on exult_core_src/gumps/Gump_manager.h, exult_core_src/keys.h, exult_core_src/mouse.h
 namespace ExultCore {
     class Gump_Manager;   // Manages UI elements (gumps)
-    class Keys;           // Handles keyboard input
+    class KeyBinder;      // Handles keyboard input (actual class in keys.h)
     class Mouse;          // Handles mouse input
     // class Game_Manager; // If it also handles direct game input, might be needed
 }
@@ -25,13 +25,14 @@ namespace Exult {
 
 class ExultInputAdapter {
 public:
-    // Constructor might take pointers to Exult_Engine_s input handling components
+    // Constructor: Exult component pointers may be null initially.
     ExultInputAdapter(OSystem* system, Common::EventManager* eventManager,
-                      ExultCore::Gump_Manager* gumpsManager,
-                      ExultCore::Keys* keysHandler,
-                      ExultCore::Mouse* mouseHandler);
+                      ExultCore::Gump_Manager* gumpsManager, // can be null
+                      ExultCore::KeyBinder* keysHandler,      // can be null (changed from Keys*)
+                      ExultCore::Mouse* mouseHandler);       // can be null
     ~ExultInputAdapter();
 
+    bool init(); // New method to fetch Exult component pointers
     void processScummVMEvents();
 
 private:
@@ -39,7 +40,7 @@ private:
     Common::EventManager* _eventManager;
 
     ExultCore::Gump_Manager* _gumpsManager;
-    ExultCore::Keys* _keysHandler;
+    ExultCore::KeyBinder* _keysHandler; // Changed from Keys*
     ExultCore::Mouse* _mouseHandler;
 
     void translateAndDispatch(const Common::Event& event);

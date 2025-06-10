@@ -22,18 +22,19 @@ namespace Exult { class ExultEngine; }
 
 namespace Exult {
 
-class ExultAudioAdapter /* : public Audio::Stream (or other ScummVM base class if applicable) */ {
+class ExultAudioAdapter : public Audio::Stream {
 public:
     // Constructor might take pointers to Exult_Engine_s audio components
     ExultAudioAdapter(OSystem* system, Audio::Mixer* mixer,
                       ExultCore::Audio* exultAudioSystem /*, ExultCore::AudioMixer* exultInternalMixer */);
-    ~ExultAudioAdapter();
+    ~ExultAudioAdapter() override;
 
     bool init();
     void shutdown();
 
     // If ExultAudioAdapter is a ScummVM Audio::Stream, this would be the callback:
-    // virtual bool getSamples(int16 *stream, int length);
+    // ScummVM Audio::Stream interface
+    bool getSamples(int16 *stream, int length) override;
 
     // Methods to control Exult_Engine_s audio (called from ExultEngine or Exult game logic via bridge)
     // void playSoundEffect(int soundId);
@@ -48,7 +49,7 @@ private:
     ExultCore::Audio* _exultAudioSystem; // Pointer to Exult_Engine_s main audio system
     // ExultCore::AudioMixer* _exultInternalMixer; // If Exult has its own mixer to manage
 
-    // Audio::ChannelId _channelId; // If registered as a ScummVM audio channel/stream
+    Audio::ChannelId _channelId = Audio::ChannelId::INVALID; // Registered ScummVM audio channel/stream
 };
 
 } // namespace Exult

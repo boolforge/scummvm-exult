@@ -89,6 +89,23 @@ Image_window::ScalerVector        Image_window::p_scalers;
 const Image_window::ScalerVector& Image_window::Scalers
 		= Image_window::p_scalers;
 
+// ScummVM Integration: Implementation of setScummVMMode
+void Image_window::setScummVMMode(bool enabled) {
+	_isScummVMMode = enabled;
+	std::cout << "Image_window: ScummVM Mode " << (enabled ? "ENABLED" : "DISABLED") << std::endl;
+	if (_isScummVMMode) {
+		// If mode is enabled, existing SDL window/renderer/texture should be destroyed
+		// or prevented from being created. This is mainly handled in create_surface.
+		if (screen_window) { // If already created
+			std::cout << "Image_window: ScummVM mode enabled, existing SDL resources will be ignored or should be cleaned up." << std::endl;
+			// SDL_DestroyTexture(screen_texture); screen_texture = nullptr;
+			// SDL_DestroyRenderer(screen_renderer); screen_renderer = nullptr;
+			// SDL_DestroyWindow(screen_window); screen_window = nullptr;
+			// display_surface, inter_surface, paletted_surface might also need cleanup if they point to screen related surfaces.
+		}
+	}
+}
+
 std::map<uint32, Image_window::Resolution>        Image_window::p_resolutions;
 const std::map<uint32, Image_window::Resolution>& Image_window::Resolutions
 		= Image_window::p_resolutions;
@@ -514,122 +531,160 @@ Image_window::~Image_window() {
  *   Create the surface.
  */
 void Image_window::create_surface(unsigned int w, unsigned int h) {
-	uses_palette = true;
+	uses_palette = true; // Exult is 8-bit paletted
 	draw_surface = paletted_surface = inter_surface = display_surface = nullptr;
+	screen_window = nullptr; // Ensure these are null initially
+	screen_renderer = nullptr;
+	screen_texture = nullptr;
 
-	if (!Scalers[fill_scaler].arb) {
-		if (Scalers[scaler].arb) {
-			fill_scaler = scaler;
-		} else {
-			fill_scaler = point;
-		}
-	}
+	if (_isScummVMMode) {
+		std::cout << "Image_window::create_surface in ScummVM Mode." << std::endl;
+		// We need to create 'draw_surface' as an 8-bit offscreen buffer.
+		// Its dimensions should be Exult's native game rendering size.
+		// 'w' and 'h' passed here might be ScummVM's window size, not Exult's internal game size.
+		// Let's assume game_width and game_height (member vars) are set correctly by constructor or resized().
+		// If not, they need to be set before this call (e.g. 320x200 or 320x240 for U7).
+		// Exult's Image_buffer (ibuf) depth is typically 8.
 
-	get_draw_dims(
-			w, h, scale, fill_mode, game_width, game_height, inter_width,
-			inter_height);
-	saved_game_height = game_height;
-	saved_game_width = game_width;
-	if (!try_scaler(w, h)) {
-		// Try fallback to point scaler if it failed, if it doesn't work, we
-		// probably can't run
-		scaler = point;
-		try_scaler(w, h);
-	}
-
-	if (!paletted_surface && !force_bpp) {    // No scaling, or failed?
-		uint32 flags = SDL_SWSURFACE | SDL_WINDOW_ALLOW_HIGHDPI;
-		if (fullscreen) {
-			flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-		}
-		if (screen_window != nullptr) {
-			SDL_SetWindowSize(screen_window, w / scale, h / scale);
-			SDL_SetWindowFullscreen(screen_window, flags);
-			SDL_DestroyTexture(screen_texture);
-			SDL_DestroyRenderer(screen_renderer);
-		} else {
-			screen_window = SDL_CreateWindow(
-					"", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-					w / scale, h / scale, flags);
-		}
-		if (screen_window == nullptr) {
-			cout << "Couldn't create window: " << SDL_GetError() << std::endl;
+		int internal_width = game_width; // Use member game_width
+		int internal_height = game_height; // Use member game_height
+		if (internal_width == 0 || internal_height == 0) { // Fallback if not set
+			internal_width = 320;
+			internal_height = 240; // Or 200 for viewport. GUMPS_SHAPES often 320x240.
+			std::cerr << "Image_window: game_width/height not set in ScummVM mode, defaulting to " << internal_width << "x" << internal_height << std::endl;
 		}
 
-		screen_renderer = SDL_CreateRenderer(
-				screen_window, -1, SDL_RENDERER_PRESENTVSYNC);
-		if (screen_renderer == nullptr) {
-			// Just in case.
-			screen_renderer = SDL_CreateRenderer(screen_window, -1, 0);
-		}
-		if (screen_renderer == nullptr) {
-			cout << "Couldn't create renderer: " << SDL_GetError() << std::endl;
-		}
-		// Do an initial draw/fill
-		SDL_SetRenderDrawColor(screen_renderer, 0, 0, 0, 255);
-		SDL_RenderClear(screen_renderer);
-		SDL_RenderPresent(screen_renderer);
-
-		int    sbpp;
-		Uint32 sRmask;
-		Uint32 sGmask;
-		Uint32 sBmask;
-		Uint32 sAmask;
-		SDL_PixelFormatEnumToMasks(
-				desktop_displaymode.format, &sbpp, &sRmask, &sGmask, &sBmask,
-				&sAmask);
-		display_surface = SDL_CreateRGBSurface(
-				0, (w / scale), (h / scale), sbpp, sRmask, sGmask, sBmask,
-				sAmask);
-		if (display_surface == nullptr) {
-			cout << "Couldn't create display surface: " << SDL_GetError()
-				 << std::endl;
-		}
-		screen_texture = SDL_CreateTexture(
-				screen_renderer, desktop_displaymode.format,
-				SDL_TEXTUREACCESS_STREAMING, (w / scale), (h / scale));
-		if (screen_texture == nullptr) {
-			cout << "Couldn't create texture: " << SDL_GetError() << std::endl;
-		}
-
-		inter_surface = draw_surface = paletted_surface = display_surface;
-		inter_width                                     = w / scale;
-		inter_height                                    = h / scale;
-		scale                                           = 1;
-	}
-	if (!paletted_surface) {
-		cerr << "Couldn't set video mode (" << w << ", " << h << ") at "
-			 << ibuf->depth
-			 << " bpp depth: " << (force_bpp ? "" : SDL_GetError()) << endl;
-		if (w == 640 && h == 480) {
-			exit(-1);
-		} else {
-			cerr << "Attempting fallback to 640x480. Good luck..." << endl;
-			scale = 2;
-			create_surface(640, 480);
+		// Create the 8-bit draw_surface. No SDL_Window or Renderer.
+		// SDL_SWSURFACE is appropriate.
+		draw_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, internal_width, internal_height, 8, 0, 0, 0, 0);
+		if (!draw_surface) {
+			std::cerr << "Image_window: Failed to create draw_surface (8-bit) in ScummVM mode: " << SDL_GetError() << std::endl;
+			// This is a critical failure.
 			return;
 		}
-	}
+		paletted_surface = draw_surface; // This is the surface whose palette will be set by Exult's Palette class
+		inter_surface = draw_surface;   // No intermediate scaling surfaces within Image_window
+		display_surface = draw_surface; // No direct display from Image_window
 
-	ibuf->width  = draw_surface->w;
-	ibuf->height = draw_surface->h;
+		std::cout << "Image_window: Created " << internal_width << "x" << internal_height << " 8-bit draw_surface for ScummVM." << std::endl;
 
-	if (draw_surface != display_surface) {
-		ibuf->width -= guard_band * 2;
-		ibuf->height -= guard_band * 2;
-	}
+		// ibuf setup
+		ibuf->width = draw_surface->w;
+		ibuf->height = draw_surface->h;
+		ibuf->line_width = draw_surface->pitch; // pitch is bytes, pixel_size is 1 for 8-bit
+		ibuf->offset_x = 0; // No window offsets, draw_surface is the whole game area
+		ibuf->offset_y = 0;
+		ibuf->bits = static_cast<unsigned char*>(draw_surface->pixels);
+		// No guard band logic needed here as we're not using Exult's scalers directly for display.
 
-	// Update line size in words.
-	ibuf->line_width = draw_surface->pitch / ibuf->pixel_size;
-	// Offset it set to the top left pixel if the game window
-	ibuf->offset_x = (get_full_width() - get_game_width()) / 2;
-	ibuf->offset_y = (get_full_height() - get_game_height()) / 2;
-	ibuf->bits     = static_cast<unsigned char*>(draw_surface->pixels)
-				 - get_start_x() - get_start_y() * ibuf->line_width;
-	// Scaler guardband is in effect
-	if (draw_surface != display_surface) {
-		ibuf->bits += guard_band + ibuf->line_width * guard_band;
-	}
+	} else { // Original Exult SDL window creation logic
+		if (!Scalers[fill_scaler].arb) {
+			if (Scalers[scaler].arb) {
+				fill_scaler = scaler;
+			} else {
+				fill_scaler = point;
+			}
+		}
+
+		get_draw_dims(
+				w, h, scale, fill_mode, game_width, game_height, inter_width,
+				inter_height);
+		saved_game_height = game_height;
+		saved_game_width = game_width;
+		if (!try_scaler(w, h)) {
+			scaler = point;
+			try_scaler(w, h);
+		}
+
+		if (!paletted_surface && !force_bpp) {    // No scaling, or failed?
+			uint32 flags = SDL_SWSURFACE | SDL_WINDOW_ALLOW_HIGHDPI;
+			if (fullscreen) {
+				flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+			}
+			if (screen_window != nullptr) {
+				SDL_SetWindowSize(screen_window, w / scale, h / scale);
+				SDL_SetWindowFullscreen(screen_window, flags);
+				SDL_DestroyTexture(screen_texture);
+				SDL_DestroyRenderer(screen_renderer);
+			} else {
+				screen_window = SDL_CreateWindow(
+						"", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+						w / scale, h / scale, flags);
+			}
+			if (screen_window == nullptr) {
+				cout << "Couldn't create window: " << SDL_GetError() << std::endl;
+			}
+
+			screen_renderer = SDL_CreateRenderer(
+					screen_window, -1, SDL_RENDERER_PRESENTVSYNC);
+			if (screen_renderer == nullptr) {
+				screen_renderer = SDL_CreateRenderer(screen_window, -1, 0);
+			}
+			if (screen_renderer == nullptr) {
+				cout << "Couldn't create renderer: " << SDL_GetError() << std::endl;
+			}
+			SDL_SetRenderDrawColor(screen_renderer, 0, 0, 0, 255);
+			SDL_RenderClear(screen_renderer);
+			SDL_RenderPresent(screen_renderer);
+
+			int    sbpp;
+			Uint32 sRmask, sGmask, sBmask, sAmask;
+			SDL_PixelFormatEnumToMasks(
+					desktop_displaymode.format, &sbpp, &sRmask, &sGmask, &sBmask,
+					&sAmask);
+			display_surface = SDL_CreateRGBSurface(
+					0, (w / scale), (h / scale), sbpp, sRmask, sGmask, sBmask,
+					sAmask);
+			if (display_surface == nullptr) {
+				cout << "Couldn't create display surface: " << SDL_GetError()
+					 << std::endl;
+			}
+			screen_texture = SDL_CreateTexture(
+					screen_renderer, desktop_displaymode.format,
+					SDL_TEXTUREACCESS_STREAMING, (w / scale), (h / scale));
+			if (screen_texture == nullptr) {
+				cout << "Couldn't create texture: " << SDL_GetError() << std::endl;
+			}
+
+			inter_surface = draw_surface = paletted_surface = display_surface;
+			inter_width = w / scale;
+			inter_height = h / scale;
+			scale = 1;
+		}
+		if (!paletted_surface) { // This check implies try_scaler or the block above failed
+			cerr << "Couldn't set video mode (" << w << ", " << h << ") at "
+				 << ibuf->depth
+				 << " bpp depth: " << (force_bpp ? "" : SDL_GetError()) << endl;
+			if (w == 640 && h == 480 && !_isScummVMMode) { // Only exit if not ScummVM mode
+				exit(-1);
+			} else if (!_isScummVMMode) { // Try fallback if not ScummVM
+				cerr << "Attempting fallback to 640x480. Good luck..." << endl;
+				scale = 2;
+				create_surface(640, 480); // Recursive call
+				return;
+			} else {
+				// In ScummVM mode, if paletted_surface (draw_surface) is still null, it's an error.
+				// The earlier CreateRGBSurface for draw_surface must have failed.
+				return; // Do not proceed with ibuf setup if draw_surface is null.
+			}
+		}
+
+		// ibuf setup for original Exult path
+		ibuf->width  = draw_surface->w;
+		ibuf->height = draw_surface->h;
+		if (draw_surface != display_surface) { // Guard band logic only for Exult's scalers
+			ibuf->width -= guard_band * 2;
+			ibuf->height -= guard_band * 2;
+		}
+		ibuf->line_width = draw_surface->pitch / ibuf->pixel_size;
+		ibuf->offset_x = (get_full_width() - get_game_width()) / 2;
+		ibuf->offset_y = (get_full_height() - get_game_height()) / 2;
+		ibuf->bits = static_cast<unsigned char*>(draw_surface->pixels)
+					 - get_start_x() - get_start_y() * ibuf->line_width;
+		if (draw_surface != display_surface) { // Guard band logic
+			ibuf->bits += guard_band + ibuf->line_width * guard_band;
+		}
+	} // End of original Exult SDL window creation logic
 }
 
 /*
@@ -884,6 +939,15 @@ void Image_window::resized(
  */
 
 void Image_window::show(int x, int y, int w, int h) {
+	if (_isScummVMMode) {
+		// In ScummVM mode, rendering is pulled by ExultGraphicsAdapter::renderExultFrame().
+		// This function might be called by Exult's internal logic (e.g. after paint_all).
+		// It should not attempt to render to an SDL window here.
+		// It could potentially mark the buffer as "dirty" for the adapter if needed.
+		// For now, do nothing.
+		return;
+	}
+
 	if (!ready()) {
 		return;
 	}
@@ -1044,6 +1108,11 @@ void Image_window::show(int x, int y, int w, int h) {
  *   Toggle fullscreen.
  */
 void Image_window::toggle_fullscreen() {
+	if (_isScummVMMode) {
+		// ScummVM handles fullscreen toggling. Exult shouldn't do it directly.
+		return;
+	}
+
 	int w;
 	int h;
 
@@ -1174,13 +1243,18 @@ void Image_window::FillGuardband() {
 }
 
 bool Image_window::screenshot(SDL_RWops* dst) {
-	if (!paletted_surface) {
+	if (!draw_surface) { // Changed from paletted_surface as that might be null in ScummVM mode
 		return false;
 	}
-	return SaveIMG_RW(draw_surface, dst, true, guard_band);
+	// Guard band might not be relevant if not using Exult's scalers for display
+	return SaveIMG_RW(draw_surface, dst, true, _isScummVMMode ? 0 : guard_band);
 }
 
 void Image_window::set_title(const char* title) {
+	if (_isScummVMMode || !screen_window) {
+		// ScummVM sets its own window title.
+		return;
+	}
 	SDL_SetWindowTitle(screen_window, title);
 }
 
@@ -1483,6 +1557,9 @@ void Image_window::UpdateRect(SDL_Surface* surf, int x, int y, int w, int h) {
 	// TODO: Only update the necessary portion of the screen.
 	// Seem to get flicker like crazy or some other ill effect no matter
 	// what I try. -Lanica 08/28/2013
+	if (_isScummVMMode || !screen_renderer || !screen_texture) { // Do not update texture if in ScummVM mode
+		return;
+	}
 	SDL_UpdateTexture(screen_texture, nullptr, surf->pixels, surf->pitch);
 	ignore_unused_variable_warning(x, y, w, h);
 	// SDL_Rect destRect = {x, y, w, h};

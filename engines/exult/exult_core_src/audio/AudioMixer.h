@@ -93,20 +93,27 @@ namespace Pentagram {
 		bool                stereo;
 		MyMidiPlayer*       midi;
 		int                 midi_volume;
-		std::vector<sint16> internal_buffer;
+		std::vector<sint16> internal_buffer; // Used by SDL callback, might be reused or separate for ScummVM
+		bool                _isScummVMOutputMode = false;
 
 		std::vector<AudioChannel> channels;
 		sint32                    id_counter;
 
-		std::unique_ptr<SDLAudioDevice> device;
+		std::unique_ptr<SDLAudioDevice> device; // This will be null if in ScummVMOutputMode
 
 		void        init_midi();
 		static void sdlAudioCallback(void* userdata, uint8* stream, int len);
 
-		void MixAudio(sint16* stream, uint32 bytes);
+		void MixAudio(sint16* stream, uint32 bytes); // Core mixing logic
 
 		static AudioMixer* the_audio_mixer;
-	};
+	public:
+		// ScummVM integration
+		void setScummVMOutputMode(bool enabled);
+		// num_frames is number of stereo/mono sample frames.
+		// buffer must be large enough for num_frames * (stereo ? 2 : 1) * sizeof(int16).
+		int getMixedOutputSamples(int16* buffer, int num_frames);
+};
 
 }    // namespace Pentagram
 

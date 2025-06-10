@@ -18,12 +18,17 @@ namespace Exult {
 } // namespace Exult
 } // namespace ScummVM
 
-// Forward declarations for Exult_Engine_s core components (to be defined/included later)
-// namespace ExultCore {
-//     class Game_Manager;
-//     class Usecode_Machine;
-//     // ... other Exult classes
-// }
+// Forward declarations for Exult_Engine_s core components
+namespace ExultCore {
+    class Configuration;
+    class Game_manager; // Note: Exult's code uses GameManager, modmgr.h defines it as GameManager
+    class Game;         // Actual game instance (BG_game or SI_game)
+    class Game_window;  // Exult's main game window and event handler
+    class Usecode_machine;
+    class Time_queue;
+    // KeyBinder is already forward declared in exult_input_adapter.h if this includes it, or define here
+    class KeyBinder;
+}
 
 namespace ScummVM {
 namespace Exult {
@@ -56,9 +61,12 @@ private:
     ExultFileAdapter* _fileAdapter;
 
     // Pointers to Exult_Engine_s core systems (bridged or direct)
-    // ::ExultCore::Game_Manager* _exultGameManager;
-    // ::ExultCore::Usecode_Machine* _exultUsecodeVM;
-    // ...
+    ExultCore::Configuration* _exultConfig;
+    ExultCore::GameManager* _exultGameManagerInstance; // Exult's global 'gamemanager'
+    ExultCore::Game* _exultGameInstance;             // Exult's global 'game'
+    ExultCore::Game_window* _exultGameWindow;        // Exult's global 'gwin'
+    // KeyBinder is handled by InputAdapter fetching its static instance.
+    // Usecode_machine and Time_queue are accessed via _exultGameWindow.
 
     bool _initialized;
     Common::FSNode _gamePath;

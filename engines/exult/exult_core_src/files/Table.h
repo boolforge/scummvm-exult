@@ -77,8 +77,7 @@ public:
 	// static bool is_table(IDataSource* in); // Old signature, IDataSource is removed.
 	// static bool is_table(const std::string& fname); // Direct file access removed.
 	// U7FileManager will determine file type before creating Table instance.
-	// A stream-based is_table could be added here if needed for U7FileManager.
-	// static bool is_table(ScummVM::Common::SeekableReadStream* stream);
+	static bool is_table(ScummVM::Common::SeekableReadStream* stream);
 };
 
 // using TableFile   = U7DataFile<Table>; // U7DataFile template removed

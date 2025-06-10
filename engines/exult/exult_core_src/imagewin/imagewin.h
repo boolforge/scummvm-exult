@@ -193,6 +193,7 @@ protected:
 
 	FillMode fill_mode;
 	int      fill_scaler;
+	bool     _isScummVMMode = false; // Added for ScummVM integration
 
 	static SDL_DisplayMode desktop_displaymode;
 	struct SDL_Window*     screen_window;
@@ -310,6 +311,11 @@ protected:
 	static float nativescale;
 
 public:
+	// ScummVM integration
+	void setScummVMMode(bool enabled);
+	bool isScummVMMode() const { return _isScummVMMode; }
+	SDL_Surface* getRawDrawSurface() const { return draw_surface; } // Expose draw_surface
+
 	inline struct SDL_Window* get_screen_window() const {
 		return screen_window;
 	}

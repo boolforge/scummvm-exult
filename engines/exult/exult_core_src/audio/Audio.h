@@ -112,6 +112,9 @@ private:
 	std::unique_ptr<Pentagram::AudioMixer> mixer;
 	sint32                                 speech_id = -1;
 	bool                                   audio_enabled;
+	bool                                   _isScummVMMode = false;
+	int                                    _scummVMTargetSampleRate = 0;
+	int                                    _scummVMTargetChannels = 0;
 	std::unique_ptr<Flex> sfx_file;    // Holds .wav sound effects.
 	// You never allocate an Audio object directly, you rather access it using
 	// get_ptr()
@@ -296,6 +299,10 @@ public:
 
 	void set_speech_volume(int newvol, bool savetoconfig);
 	void set_sfx_volume(int newvol, bool savetoconfig);
+
+	// ScummVM integration methods
+	void setScummVMMode(bool enabled, int desired_sample_rate, int desired_channels);
+	int getMixedAudio(int16* buffer, int num_samples); // num_samples is count of int16s (total length of buffer)
 };
 
 #endif

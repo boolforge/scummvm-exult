@@ -68,6 +68,8 @@ struct Chunk {
 	Chunk(size_t l, uint8* d) : length(l), data(d) {}
 };
 
+#include "common/debug.h" // For ScummVM::debug
+
 Audio*     Audio::self        = nullptr;
 const int* Audio::bg2si_sfxs  = nullptr;
 const int* Audio::bg2si_songs = nullptr;
@@ -212,7 +214,7 @@ Audio* Audio::get_ptr() {
 	return self;
 }
 
-Audio::Audio() {
+Audio::Audio() : _isScummVMMode(false), _scummVMTargetSampleRate(0), _scummVMTargetChannels(0) {
 	assert(self == nullptr);
 
 	string s, newval;
@@ -264,14 +266,84 @@ void Audio::Init(int _samplerate, int _channels) {
 		return;
 	}
 
-	mixer = std::make_unique<AudioMixer>(
-			_samplerate, _channels == 2, MIXER_CHANNELS);
+	if (_isScummVMMode) {
+		ScummVM::debug(1, "ExultCore::Audio::Init called in ScummVM mode. Overriding rate/channels to %d/%d.", _scummVMTargetSampleRate, _scummVMTargetChannels);
+		_samplerate = _scummVMTargetSampleRate; // Use rate/channels provided by ScummVM
+		_channels = _scummVMTargetChannels;
+	}
 
-	COUT("Audio initialisation OK");
+	if (!mixer) {
+		// Pentagram::AudioMixer constructor is now aware of _isScummVMOutputMode but that flag is on Pentagram::AudioMixer itself.
+		// ExultCore::Audio needs to tell the created Pentagram::AudioMixer instance about the mode.
+		mixer = std::make_unique<Pentagram::AudioMixer>(_samplerate, _channels == 2, MIXER_CHANNELS);
+	}
 
-	mixer->openMidiOutput();
+	if (mixer && _isScummVMMode) {
+		// Explicitly tell the Pentagram::AudioMixer instance to operate in ScummVM mode.
+		// This will prevent it from opening SDL audio devices if its constructor didn't already,
+		// or close them if it did (though constructor logic is now conditional).
+		mixer->setScummVMOutputMode(true);
+		// Also ensure its internal sample rate and stereo settings match what ScummVM expects,
+		// though these are passed to constructor. If AudioMixer's constructor doesn't use them
+		// when _isScummVMOutputMode is true initially, a reconfig method might be needed.
+		// For now, assuming constructor + setScummVMOutputMode is sufficient.
+	}
+
+
+	ScummVM::debug(1, "ExultCore::Audio initialisation (mode: %s, rate: %d, channels: %d)", _isScummVMMode ? "ScummVM" : "Standalone", _samplerate, _channels);
+
+	if (!_isScummVMMode) {
+		mixer->openMidiOutput(); // Only let Exult handle MIDI device if not in ScummVM mode
+	}
 	initialized = true;
 }
+
+// ScummVM integration methods
+void Audio::setScummVMMode(bool enabled, int desired_sample_rate, int desired_channels) {
+	_isScummVMMode = enabled;
+	if (_isScummVMMode) {
+		_scummVMTargetSampleRate = desired_sample_rate;
+		_scummVMTargetChannels = desired_channels;
+		ScummVM::debug(1, "ExultCore::Audio: ScummVM mode ENABLED. Rate: %d, Channels: %d", desired_sample_rate, desired_channels);
+
+		// If audio was already initialized in standalone mode, it needs to be reset/reconfigured.
+		// This is complex. For now, assuming setScummVMMode is called before Audio::Init gets effectively run
+		// or that Audio::Init() will correctly use these ScummVM-provided values.
+		// If `mixer` (Pentagram::AudioMixer) exists, its SDL audio output needs to be stopped/prevented.
+		if (mixer && initialized) {
+			// mixer->closeDevice(); // Hypothetical
+			ScummVM::warning("ExultCore::Audio: ScummVM mode set after audio was initialized. Pentagram::AudioMixer might need manual reconfiguration.");
+		}
+
+	} else {
+		ScummVM::debug(1, "ExultCore::Audio: ScummVM mode DISABLED.");
+	}
+}
+
+int Audio::getMixedAudio(int16* buffer, int num_samples) {
+	if (!_isScummVMMode || !mixer || !initialized) {
+		// Ensure buffer is zeroed if we provide no data. num_samples is total int16s.
+		memset(buffer, 0, num_samples * sizeof(int16));
+		return 0; // Return 0 samples filled
+	}
+
+	// CRITICAL TODO is now in Pentagram::AudioMixer itself if its MixAudio isn't directly callable for this.
+	// We now call getMixedOutputSamples on the Pentagram::AudioMixer instance.
+	if (mixer) {
+		// num_samples is total int16 count.
+		// getMixedOutputSamples expects number of frames.
+		int num_frames = num_samples / (_scummVMTargetChannels > 0 ? _scummVMTargetChannels : 1);
+		if (_scummVMTargetChannels == 0) { // Should not happen if initialized correctly
+			ScummVM::warning("ExultCore::Audio::getMixedAudio: _scummVMTargetChannels is 0!");
+		}
+		return mixer->getMixedOutputSamples(buffer, num_frames);
+	}
+
+	// Fallback: returning silence if no mixer.
+	memset(buffer, 0, num_samples * sizeof(int16));
+	return num_samples; // Pretend we filled all requested samples with silence
+}
+// END ScummVM integration methods
 
 bool Audio::can_sfx(const std::string& file, std::string* out) {
 	if (file.empty()) {

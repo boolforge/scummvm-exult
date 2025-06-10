@@ -8,6 +8,7 @@
 
 // Actual Exult include for its ImageWin and potentially Palette classes
 // Paths are relative to the engines/exult/ directory where this .cpp file resides.
+#include "exult_core_src/gamewin.h" // For Game_window::get_instance()
 #include "exult_core_src/imagewin/imagewin.h"
 #include "exult_core_src/palette.h" // Assuming palette.h is in the root of exult_core_src
 
@@ -45,16 +46,47 @@ bool ExultGraphicsAdapter::init() {
     // }
     // _osystem->unlockScreenSurface(false); // Unlock immediately if just checking
 
-    // TODO: Initialize Exult_Engine_s graphics system (ImageWin) here.
-    // This will involve:
-    // 1. Creating an instance of ExultCore::ImageWin if not already done by ExultEngine.
-    //    _exultImageWin = new ExultCore::ImageWin(...);
-    // 2. Configuring ImageWin to render to a buffer that this adapter can access,
-    //    or modifying ImageWin to directly use ScummVM_Engine_s Graphics::Surface operations.
-    //    This is the most complex part of the graphics adaptation.
-    //    (e.g., _exultImageWin->setRenderTarget(this_adapter_or_scummvm_surface);)
+    // Fetch the Image_window instance from Exult's Game_window singleton
+    if (ExultCore::Game_window::get_instance()) {
+        _exultImageWin = ExultCore::Game_window::get_instance()->get_win();
+    }
 
-    debug(1, "ExultGraphicsAdapter: Placeholder initialization complete.");
+    if (!_exultImageWin) {
+        error("ExultGraphicsAdapter: Failed to get Image_window instance from ExultCore::Game_window.");
+        return false;
+    }
+
+    // Configure ImageWin for ScummVM mode. This should prevent it from creating SDL windows/renderers.
+    _exultImageWin->setScummVMMode(true);
+
+    // Initialize ImageWin's surface.
+    // The Game_window constructor (called in ExultEngine) already calls create_surface on Image_window
+    // with initial dimensions. Image_window::create_surface, when in ScummVM mode, should now
+    // correctly create its internal 8-bit draw_surface based on its member game_width/game_height
+    // (which were set by Game_window's constructor from ExultEngine's specified internal dimensions).
+    // So, an explicit call to _exultImageWin->create_surface() here might be redundant or
+    // could be used to re-confirm/re-initialize if ScummVM provides different dimensions later.
+    // For now, let's assume the one in Game_window constructor is sufficient.
+    // If a resize/reinit is needed based on ScummVM specifics:
+    // int scummvm_preferred_width = 320; // Or get from config / _osystem
+    // int scummvm_preferred_height = 200; // Or get from config / _osystem
+    // _exultImageWin->resized(scummvm_preferred_width, scummvm_preferred_height, false,
+    //                         scummvm_preferred_width, scummvm_preferred_height, 1,
+    //                         ExultCore::Image_window::point, ExultCore::Image_window::Fit);
+    // This `resized` call is complex; `create_surface` called by `Game_window` constructor is simpler.
+    // Let's ensure that `Image_window::game_width` and `Image_window::game_height` are correctly set
+    // to Exult's native rendering resolution (e.g., 320x200 or 320x240) by the time `create_surface` is called.
+    // This was done in ExultEngine when constructing Game_window.
+
+    // Verify draw_surface was created
+    if (!_exultImageWin->getRawDrawSurface()) {
+        error("ExultGraphicsAdapter: Exult's draw_surface is null after Image_window initialization in ScummVM mode.");
+        return false;
+    }
+		debug(1, "ExultGraphicsAdapter: Exult ImageWin configured for ScummVM mode. Draw surface expected to be %dx%d.", _exultImageWin->get_game_width(), _exultImageWin->get_game_height());
+
+
+    debug(1, "ExultGraphicsAdapter: Initialization complete.");
     return true;
 }
 
@@ -90,27 +122,93 @@ void ExultGraphicsAdapter::renderExultFrame() {
     //      (e.g., if (_exultImageWin) _exultImageWin->paint();)
     //    - Get the pixel data and palette from Exult_Engine_s ImageWin.
     //    - Convert/blit this data to the ScummVM targetSurface.
-    //      This might involve palette conversion (e.g., using convertExultPaletteToScummVM)
-    //      and then blitting the indexed or converted RGB data.
-    //
-    // 2. If Exult_Engine_s ImageWin is modified to render directly using ScummVM primitives:
-    //    - Its internal drawing calls would already be targeting a ScummVM surface
-    //      (possibly via wrapper methods in this adapter that ImageWin calls).
-    //      In this case, this function might just ensure the correct ScummVM surface is active
-    //      or trigger a final presentation step if needed.
+    // 1. Ensure Exult's internal frame buffer (_exultImageWin->draw_surface) is updated.
+    //    Exult's main game logic, when run by ExultEngine::updateGameLogic(), should populate this.
+    //    A direct call to something like _exultImageWin->paint_all() or Game_window::get_instance()->paint()
+    //    might be needed if Exult's rendering isn't automatically happening to the buffer every frame.
+    //    For now, we assume draw_surface is ready.
 
-    // Placeholder: Fill screen with a color to indicate it_s working at a basic level
-    // targetSurface->fill(Common::Color(0, 64, 0)); // Dark green
+    if (!_exultImageWin) {
+        warning("ExultGraphicsAdapter: _exultImageWin is null, cannot render.");
+        unlockScreen(false);
+        return;
+    }
+
+    SDL_Surface* exultBuffer = _exultImageWin->getRawDrawSurface();
+    if (!exultBuffer) {
+        warning("ExultGraphicsAdapter: Exult's draw_surface is null.");
+        unlockScreen(false);
+        return;
+    }
+
+    ExultCore::Palette* exultPalette = nullptr;
+    if (ExultCore::Game_window::get_instance()) {
+        exultPalette = ExultCore::Game_window::get_instance()->get_pal();
+    }
+
+    if (!exultPalette) {
+        warning("ExultGraphicsAdapter: Exult's palette is null.");
+        unlockScreen(false);
+        return;
+    }
+
+    // Convert Exult's 6-bit/channel palette to ScummVM's 32-bit format.
+    uint32 scummvmPal32[256];
+    for (int i = 0; i < 256; ++i) {
+        byte r_byte = exultPalette->get_red(i);
+        byte g_byte = exultPalette->get_green(i);
+        byte b_byte = exultPalette->get_blue(i);
+
+        // Scale 6-bit (0-63) to 8-bit (0-255)
+        uint32 r = (r_byte * 255U) / 63U;
+        uint32 g = (g_byte * 255U) / 63U;
+        uint32 b = (b_byte * 255U) / 63U;
+        scummvmPal32[i] = Common::mapRGB(r, g, b);
+    }
+
+    // Blit and convert 8-bit indexed to 32-bit RGBA
+    int widthToBlit = Common::min(targetSurface->w, exultBuffer->w);
+    int heightToBlit = Common::min(targetSurface->h, exultBuffer->h);
+
+    uint8* srcPixels = (uint8*)exultBuffer->pixels;
+    int srcPitch = exultBuffer->pitch;
+
+    // Determine destination format and blit accordingly
+    if (targetSurface->format.bytesPerPixel == 4) { // Target is 32-bit
+        uint32* destPixels = (uint32*)targetSurface->pixels;
+        int destPitch = targetSurface->pitch / 4;
+
+        for (int y = 0; y < heightToBlit; ++y) {
+            uint8* srcRow = srcPixels + y * srcPitch;
+            uint32* destRow = destPixels + y * destPitch;
+            for (int x = 0; x < widthToBlit; ++x) {
+                destRow[x] = scummvmPal32[srcRow[x]];
+            }
+        }
+    } else if (targetSurface->format.bytesPerPixel == 2) { // Target is 16-bit
+        uint16* destPixels = (uint16*)targetSurface->pixels;
+        int destPitch = targetSurface->pitch / 2;
+
+        for (int y = 0; y < heightToBlit; ++y) {
+            uint8* srcRow = srcPixels + y * srcPitch;
+            uint16* destRow = destPixels + y * destPitch;
+            for (int x = 0; x < widthToBlit; ++x) {
+                uint32 rgba = scummvmPal32[srcRow[x]];
+                uint8 r_8bit = (rgba >> 16) & 0xFF;
+                uint8 g_8bit = (rgba >>  8) & 0xFF;
+                uint8 b_8bit = (rgba      ) & 0xFF;
+                destRow[x] = targetSurface->format.mapRGB(r_8bit, g_8bit, b_8bit);
+            }
+        }
+    } else {
+         warning("ExultGraphicsAdapter: Target surface is not 32-bit or 16-bit. Cannot render Exult frame.");
+    }
 
     unlockScreen(true); // Unlock and update the screen
 }
 
 // void ExultGraphicsAdapter::convertExultPaletteToScummVM(const ExultCore::Palette* exultPalette, uint32* scummvmPalette, int numColors) {
-//     if (!exultPalette || !scummvmPalette) return;
-//     // TODO: Implement palette conversion from Exult_Engine_s Palette format to ScummVM_Engine_s 32-bit RGBA
-//     // for (int i = 0; i < numColors; ++i) {
-//     //     ExultCore::RGB exultColor = exultPalette->getColor(i);
-//     //     scummvmPalette[i] = Common::mapRGB(exultColor.r, exultColor.g, exultColor.b);
+//     // This logic is now inlined in renderExultFrame for simplicity, can be extracted if needed.
 //     // }
 // }
 
