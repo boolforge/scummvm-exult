@@ -736,16 +736,37 @@ int Audio::play_wave_sfx(
 	if (!effects_enabled || !mixer || !U7exists(sfxfile.name)) {
 		return -1;    // no .wav sfx available
 	}
-	IExultDataSource ds(sfxfile, num);
-	if (!ds.good()) {
-		cerr << "SFX " << num << " from {" << sfxfile.name << ", "
-			 << sfxfile.index << "} is out of range" << endl;
-		return -1;
-	}
-
-	size_t wavlen;    // Read .wav file.
-	auto   wavbuf = ds.steal_data(wavlen);
-	auto*  wave   = AudioSample::createAudioSample(std::move(wavbuf), wavlen);
+	
+	// Get the ScummVM stream from ExultFileAdapter instead of using IExultDataSource
+	// This assumes ExultEngine and its FileAdapter are accessible
+	// TODO: Add proper access to ExultEngine/FileAdapter instance
+	ScummVM::Common::SeekableReadStream* stream = nullptr;
+	
+	// Temporary implementation until proper ExultFileAdapter access is established
+	// In the final implementation, we would use something like:
+	// stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(sfxfile, num);
+	
+	// For now, we'll use a fallback to the old method
+	// This will be replaced with proper ScummVM stream access
+	{
+		// Temporary fallback using IExultDataSource until full integration
+		IExultDataSource ds(sfxfile, num);
+		if (!ds.good()) {
+			cerr << "SFX " << num << " from {" << sfxfile.name << ", "
+				 << sfxfile.index << "} is out of range" << endl;
+			return -1;
+		}
+		
+		size_t wavlen;
+		auto wavbuf = ds.steal_data(wavlen);
+		auto* wave = AudioSample::createAudioSample(std::move(wavbuf), wavlen);
+		
+		// TODO: Replace with direct ScummVM stream reading when ExultFileAdapter is fully integrated
+		// The final implementation will look something like:
+		// size_t wavlen = stream->size();
+		// auto wavbuf = new unsigned char[wavlen];
+		// stream->read(wavbuf, wavlen);
+		// auto* wave = AudioSample::createAudioSample(std::unique_ptr<unsigned char[]>(wavbuf), wavlen);
 
 	volume                = (volume * sfx_volume) / 100;
 	const int instance_id = mixer->playSample(

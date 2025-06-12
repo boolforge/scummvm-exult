@@ -48,7 +48,10 @@ private:
 		FLI_PSTAMP   = 18,    // Unsupported
 	};
 
-	IExultDataSource              fli_data;
+	// TODO: Replace with ScummVM::Common::SeekableReadStream
+	// This will be updated when ExultFileAdapter is fully integrated
+	// The final implementation will use a stream pointer from ScummVM
+	IExultDataSource              fli_data; // Will be replaced with ScummVM stream
 	std::unique_ptr<Image_buffer> fli_buf;
 	std::unique_ptr<Palette>      palette;
 	int                           fli_size;

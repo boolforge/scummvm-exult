@@ -47,31 +47,78 @@ BaseRenderer3D *makeOpenGL3DShaderRenderer(BaseGame *inGame) {
 
 BaseRenderOpenGL3DShader::BaseRenderOpenGL3DShader(BaseGame *inGame) : BaseRenderer3D(inGame) {
 	setDefaultAmbientLightColor();
-	_spriteVBO = 0;
 	_alphaRef = 0;
 }
 
 BaseRenderOpenGL3DShader::~BaseRenderOpenGL3DShader() {
 	_camera = nullptr; // ref only
 	glDeleteBuffers(1, &_spriteVBO);
+	glDeleteBuffers(1, &_fadeVBO);
+	glDeleteBuffers(1, &_lineVBO);
+	glDeleteBuffers(1, &_simpleShadowVBO);
 }
 
 bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed) {
+	_simpleShadow[0].x = -1.0f;
+	_simpleShadow[0].y = 0.0f;
+	_simpleShadow[0].z = 1.0f;
+	_simpleShadow[0].nx = 0.0f;
+	_simpleShadow[0].ny = 1.0f;
+	_simpleShadow[0].nz = 0.0f;
+	_simpleShadow[0].u = 0.0f;
+	_simpleShadow[0].v = 1.0f;
+
+	_simpleShadow[1].x = -1.0f;
+	_simpleShadow[1].y = 0.0f;
+	_simpleShadow[1].z = -1.0f;
+	_simpleShadow[1].nx = 0.0f;
+	_simpleShadow[1].ny = 1.0f;
+	_simpleShadow[1].nz = 0.0f;
+	_simpleShadow[1].u = 1.0f;
+	_simpleShadow[1].v = 1.0f;
+
+	_simpleShadow[2].x = 1.0f;
+	_simpleShadow[2].y = 0.0f;
+	_simpleShadow[2].z = 1.0f;
+	_simpleShadow[2].nx = 0.0f;
+	_simpleShadow[2].ny = 1.0f;
+	_simpleShadow[2].nz = 0.0f;
+	_simpleShadow[2].u = 0.0f;
+	_simpleShadow[2].v = 0.0f;
+
+	_simpleShadow[3].x = 1.0f;
+	_simpleShadow[3].y = 0.0f;
+	_simpleShadow[3].z = -1.0f;
+	_simpleShadow[3].nx = 0.0f;
+	_simpleShadow[3].ny = 1.0f;
+	_simpleShadow[3].nz = 0.0f;
+	_simpleShadow[3].u = 1.0f;
+	_simpleShadow[3].v = 0.0f;
 
 	glGenBuffers(1, &_spriteVBO);
 	glBindBuffer(GL_ARRAY_BUFFER, _spriteVBO);
 	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(SpriteVertex), nullptr, GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	static const char *spriteAttributes[] = {"position", "texcoord", "color", nullptr};
+	static const char *spriteAttributes[] = { "position", "texcoord", "color", nullptr };
 	_spriteShader = OpenGL::Shader::fromFiles("wme_sprite", spriteAttributes);
-
 	_spriteShader->enableVertexAttribute("position", _spriteVBO, 3, GL_FLOAT, false, sizeof(SpriteVertex), 0);
 	_spriteShader->enableVertexAttribute("texcoord", _spriteVBO, 2, GL_FLOAT, false, sizeof(SpriteVertex), 12);
 	_spriteShader->enableVertexAttribute("color", _spriteVBO, 4, GL_FLOAT, false, sizeof(SpriteVertex), 20);
 
 	static const char *geometryAttributes[] = { "position", "color", nullptr };
 	_geometryShader = OpenGL::Shader::fromFiles("wme_geometry", geometryAttributes);
+
+	glGenBuffers(1, &_simpleShadowVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, _simpleShadowVBO);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(SimpleShadowVertex), _simpleShadow, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	static const char *simpleShadowAttributes[] = { "position", "normal", "texcoord", nullptr };
+	_simpleShadowShader = OpenGL::Shader::fromFiles("wme_simple_shadow", simpleShadowAttributes);
+	_simpleShadowShader->enableVertexAttribute("position", _simpleShadowVBO, 3, GL_FLOAT, false, sizeof(SimpleShadowVertex), 0);
+	_simpleShadowShader->enableVertexAttribute("normal", _simpleShadowVBO, 3, GL_FLOAT, false, sizeof(SimpleShadowVertex), 12);
+	_simpleShadowShader->enableVertexAttribute("texcoord", _simpleShadowVBO, 2, GL_FLOAT, false, sizeof(SimpleShadowVertex), 24);
 
 	static const char *shadowVolumeAttributes[] = { "position", nullptr };
 	_shadowVolumeShader = OpenGL::Shader::fromFiles("wme_shadow_volume", shadowVolumeAttributes);
@@ -83,7 +130,7 @@ bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed
 	DXMatrixIdentity(&m);
 	_transformStack.push_back(m);
 
-	static const char *XModelAttributes[] = {"position", "texcoord", "normal", nullptr};
+	static const char *XModelAttributes[] = { "position", "texcoord", "normal", nullptr };
 	_xmodelShader = OpenGL::Shader::fromFiles("wme_modelx", XModelAttributes);
 
 	setDefaultAmbientLightColor();
@@ -93,34 +140,23 @@ bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed
 		lightEnable(i, false);
 	}
 
-	float fadeVertexCoords[8];
-
-	fadeVertexCoords[0 * 2 + 0] = 0;
-	fadeVertexCoords[0 * 2 + 1] = height;
-	fadeVertexCoords[1 * 2 + 0] = 0;
-	fadeVertexCoords[1 * 2 + 1] = 0;
-	fadeVertexCoords[2 * 2 + 0] = width;
-	fadeVertexCoords[2 * 2 + 1] = height;
-	fadeVertexCoords[3 * 2 + 0] = width;
-	fadeVertexCoords[3 * 2 + 1] = 0;
-
 	glGenBuffers(1, &_fadeVBO);
 	glBindBuffer(GL_ARRAY_BUFFER, _fadeVBO);
-	glBufferData(GL_ARRAY_BUFFER, 4 * 8, fadeVertexCoords, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(LineVertex), nullptr, GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	static const char *fadeAttributes[] = { "position", nullptr };
 	_fadeShader = OpenGL::Shader::fromFiles("wme_fade", fadeAttributes);
-	_fadeShader->enableVertexAttribute("position", _fadeVBO, 2, GL_FLOAT, false, 8, 0);
+	_fadeShader->enableVertexAttribute("position", _fadeVBO, 3, GL_FLOAT, false, sizeof(LineVertex), 0);
 
 	glGenBuffers(1, &_lineVBO);
 	glBindBuffer(GL_ARRAY_BUFFER, _lineVBO);
-	glBufferData(GL_ARRAY_BUFFER, 2 * 8, nullptr, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(LineVertex), nullptr, GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	static const char *lineAttributes[] = { "position", nullptr };
 	_lineShader = OpenGL::Shader::fromFiles("wme_line", lineAttributes);
-	_lineShader->enableVertexAttribute("position", _lineVBO, 2, GL_FLOAT, false, 8, 0);
+	_lineShader->enableVertexAttribute("position", _lineVBO, 3, GL_FLOAT, false, sizeof(LineVertex), 0);
 
 
 
@@ -143,9 +179,9 @@ bool BaseRenderOpenGL3DShader::flip() {
 	// Disable blend mode and cull face to prevent interfere with backend renderer
 	glDisable(GL_BLEND);
 	glDisable(GL_CULL_FACE);
-	
+
 	g_system->updateScreen();
-	
+
 	_state = RSTATE_NONE;
 	return true;
 }
@@ -173,7 +209,6 @@ bool BaseRenderOpenGL3DShader::setup2D(bool force) {
 
 		_alphaRef = 0.0f;
 
-		glPolygonMode(GL_FRONT, GL_FILL);
 		glFrontFace(GL_CCW);  // WME DX have CW
 		glEnable(GL_CULL_FACE);
 		glDisable(GL_STENCIL_TEST);
@@ -195,14 +230,13 @@ bool BaseRenderOpenGL3DShader::setup3D(Camera3D *camera, bool force) {
 		// It will be enabled in other places when needed.
 		// This is delta compared to original sources.
 		glDisable(GL_BLEND);
-		
+
 		glEnable(GL_DEPTH_TEST);
 		// WME uses 8 as a reference value and Direct3D expects it to be in the range [0, 255]
 		_alphaRef = 8 / 255.0f;
 
 		setAmbientLightRenderState();
 
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 
 		if (camera)
@@ -237,11 +271,10 @@ bool BaseRenderOpenGL3DShader::setup3D(Camera3D *camera, bool force) {
 		_gameRef->getFogParams(&fogEnabled, &fogColor, &fogStart, &fogEnd);
 		if (fogEnabled) {
 			// TODO: Implement fog
-			GLfloat color[4];
-			color[0] = RGBCOLGetR(fogColor) / 255.0f;
-			color[1] = RGBCOLGetG(fogColor) / 255.0f;
-			color[2] = RGBCOLGetB(fogColor) / 255.0f;
-			color[3] = RGBCOLGetA(fogColor) / 255.0f;
+			GLfloat color[4] = { RGBCOLGetR(fogColor) / 255.0f,
+			                     RGBCOLGetG(fogColor) / 255.0f,
+			                     RGBCOLGetB(fogColor) / 255.0f,
+			                     RGBCOLGetA(fogColor) / 255.0f };
 			debug(5, "BaseRenderOpenGL3DShader::setup3D fog not yet implemented! [%f %f %f %f]", color[0], color[1], color[2], color[3]);
 		} else {
 			// TODO: Disable fog in shader
@@ -263,6 +296,12 @@ bool BaseRenderOpenGL3DShader::setup3D(Camera3D *camera, bool force) {
 	_geometryShader->use();
 	_geometryShader->setUniform("viewMatrix", viewMatrix);
 	_geometryShader->setUniform("projMatrix", projectionMatrix);
+
+	_simpleShadowShader->use();
+	_simpleShadowShader->setUniform("viewMatrix", viewMatrix);
+	_simpleShadowShader->setUniform("projMatrix", projectionMatrix);
+	_simpleShadowShader->setUniform1f("alphaRef", _alphaRef);
+	_simpleShadowShader->setUniform("alphaTest", true);
 
 	_shadowVolumeShader->use();
 	_shadowVolumeShader->setUniform("viewMatrix", viewMatrix);
@@ -307,7 +346,6 @@ bool BaseRenderOpenGL3DShader::setupLines() {
 	if (_state != RSTATE_LINES) {
 		_state = RSTATE_LINES;
 
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		glDisable(GL_DEPTH_TEST);
 		glFrontFace(GL_CW); // WME DX have CCW
 		glEnable(GL_CULL_FACE);
@@ -316,8 +354,8 @@ bool BaseRenderOpenGL3DShader::setupLines() {
 		_lineShader->setUniform1f("alphaRef", _alphaRef);
 		_lineShader->setUniform("alphaTest", true);
 
-		glDisable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
 		_lastTexture = nullptr;
 	}
 
@@ -325,19 +363,14 @@ bool BaseRenderOpenGL3DShader::setupLines() {
 }
 
 bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::Rect32 &rect,
-										const Wintermute::Vector2 &pos, const Wintermute::Vector2 &rot,
-										const Wintermute::Vector2 &scale, float angle, uint32 color,
-										bool alphaDisable, Graphics::TSpriteBlendMode blendMode,
-										bool mirrorX, bool mirrorY) {
+	                                    const Wintermute::Vector2 &pos, const Wintermute::Vector2 &rot,
+	                                    const Wintermute::Vector2 &scale,
+	                                    float angle, uint32 color, bool alphaDisable,
+	                                    Graphics::TSpriteBlendMode blendMode,
+	                                    bool mirrorX, bool mirrorY) {
 	BaseSurfaceOpenGL3D *texture = dynamic_cast<BaseSurfaceOpenGL3D *>(tex);
 	if (!texture)
 		return false;
-
-	if (_spriteBatchMode) {
-		_batchTexture = texture;
-		_batchAlphaDisable = alphaDisable;
-		_batchBlendMode = blendMode;
-	}
 
 	if (_forceAlphaColor != 0) {
 		color = _forceAlphaColor;
@@ -362,16 +395,7 @@ bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::
 		SWAP(texTop, texBottom);
 	}
 
-	SpriteVertex vertices[4] = {};
-
-	// batch mode
-	if (_spriteBatchMode) {
-		// TODO
-		commitSpriteBatch();
-	}
-
-	// Convert to OpenGL origin space
-	SWAP(texTop, texBottom);
+	SpriteVertex vertices[4];
 
 	// texture coords
 	vertices[0].u = texLeft;
@@ -386,27 +410,34 @@ bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::
 	vertices[3].u = texRight;
 	vertices[3].v = texTop;
 
-	float offset = _height / 2.0f;
-	float correctedYPos = (pos.y - offset) * -1.0f + offset;
-
 	// position coords
 	vertices[0].x = pos.x;
-	vertices[0].y = correctedYPos;
+	vertices[0].y = pos.y + height;
 	vertices[0].z = 0.9f;
 
 	vertices[1].x = pos.x;
-	vertices[1].y = correctedYPos - height;
+	vertices[1].y = pos.y;
 	vertices[1].z = 0.9f;
 
 	vertices[2].x = pos.x + width;
-	vertices[2].y = correctedYPos;
+	vertices[2].y = pos.y + height;
 	vertices[2].z = 0.9f;
 
 	vertices[3].x = pos.x + width;
-	vertices[3].y = correctedYPos - height;
+	vertices[3].y = pos.y;
 	vertices[3].z = 0.9f;
 
-	// not exactly sure about the color format, but this seems to work
+	if (angle != 0) {
+		DXVector2 sc(1.0f, 1.0f);
+		DXVector2 rotation(rot.x, rot.y);
+		transformVertices(vertices, &rotation, &sc, degToRad(-angle));
+	}
+
+	for (int i = 0; i < 4; i++) {
+		vertices[i].x += _drawOffsetX;
+		vertices[i].y += _drawOffsetY;
+	}
+
 	byte a = RGBCOLGetA(color);
 	byte r = RGBCOLGetR(color);
 	byte g = RGBCOLGetG(color);
@@ -419,64 +450,34 @@ bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::
 		vertices[i].a = a / 255.0f;
 	}
 
-	if (angle != 0) {
-		DXVector2 sc(1.0f, 1.0f);
-		DXVector2 rotation(rot.x, (rot.y - (_height / 2.0f)) * -1.0f + (_height / 2.0f));
-		transformVertices(vertices, &rotation, &sc, degToRad(-angle));
-	}
-
-	if (_spriteBatchMode) {
-		// TODO
-	} else {
-		setSpriteBlendMode(blendMode);
-		if (alphaDisable) {
-			_spriteShader->setUniform("alphaTest", false);
-			glDisable(GL_BLEND);
-		}
-
-		if (_lastTexture != texture) {
-			_lastTexture = texture;
-			glBindTexture(GL_TEXTURE_2D, texture->getTextureName());
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			// for sprites we clamp to the edge, to avoid line fragments at the edges
-			// this is not done by wme, though
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glEnable(GL_TEXTURE_2D);
-		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, _spriteVBO);
-		glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(SpriteVertex), vertices);
-
-		setProjection2D(_spriteShader);
-
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-		if (alphaDisable) {
-			_spriteShader->setUniform("alphaTest", true);
-			glEnable(GL_BLEND);
-		}
-	}
-
-	return true;
-}
-
-bool BaseRenderOpenGL3DShader::commitSpriteBatch() {
-	// render
-	setSpriteBlendMode(_batchBlendMode);
-	if (_batchAlphaDisable) {
+	setSpriteBlendMode(blendMode);
+	if (alphaDisable) {
 		_spriteShader->setUniform("alphaTest", false);
 		glDisable(GL_BLEND);
 	}
 
-	if (_lastTexture != _batchTexture) {
-		_lastTexture = _batchTexture;
-		glBindTexture(GL_TEXTURE_2D, _batchTexture->getTextureName());
+	if (_lastTexture != texture) {
+		_lastTexture = texture;
+		glBindTexture(GL_TEXTURE_2D, texture->getTextureName());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		// for sprites we clamp to the edge, to avoid line fragments at the edges
+		// this is not done by wme, but centering pixel by 0.5
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glEnable(GL_TEXTURE_2D);
 	}
 
-	// TODO
+	glBindBuffer(GL_ARRAY_BUFFER, _spriteVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(SpriteVertex), vertices);
 
-	if (_batchAlphaDisable) {
+	glViewport(0, 0, _width, _height);
+	setProjection2D(_spriteShader);
+
+	glFrontFace(GL_CW);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	if (alphaDisable) {
 		_spriteShader->setUniform("alphaTest", true);
 		glEnable(GL_BLEND);
 	}
@@ -484,17 +485,19 @@ bool BaseRenderOpenGL3DShader::commitSpriteBatch() {
 	return true;
 }
 
+bool BaseRenderOpenGL3DShader::commitSpriteBatch() {
+	// nothing to implement
+	return true;
+}
+
 bool BaseRenderOpenGL3DShader::startSpriteBatch() {
-	//_spriteBatchMode = true;
+	// nothing to implement
 	return true;
 }
 
 bool BaseRenderOpenGL3DShader::endSpriteBatch() {
-	if (!_spriteBatchMode)
-		return false;
-
-	_spriteBatchMode = false;
-	return commitSpriteBatch();
+	// nothing to implement
+	return true;
 }
 
 DXMatrix *BaseRenderOpenGL3DShader::buildMatrix(DXMatrix* out, const DXVector2 *centre, const DXVector2 *scaling, float angle) {
@@ -577,16 +580,23 @@ bool BaseRenderOpenGL3DShader::setProjection() {
 }
 
 bool BaseRenderOpenGL3DShader::drawLine(int x1, int y1, int x2, int y2, uint32 color) {
+	x1 += _drawOffsetX;
+	x2 += _drawOffsetX;
+	y1 += _drawOffsetY;
+	y2 += _drawOffsetY;
+
+	// position coords
+	LineVertex vertices[2];
+	vertices[0].x = x1;
+	vertices[0].y = y1;
+	vertices[0].z = 0.9f;
+	vertices[1].x = x2;
+	vertices[1].y = y2;
+	vertices[1].z = 0.9f;
+
 	glBindBuffer(GL_ARRAY_BUFFER, _lineVBO);
 
-	float lineCoords[4];
-
-	lineCoords[0] = x1;
-	lineCoords[1] = _height - y1;
-	lineCoords[2] = x2;
-	lineCoords[3] = _height - y2;
-
-	glBufferSubData(GL_ARRAY_BUFFER, 0, 2 * 8, lineCoords);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 2 * sizeof(LineVertex), vertices);
 
 	byte a = RGBCOLGetA(color);
 	byte r = RGBCOLGetR(color);
@@ -601,6 +611,9 @@ bool BaseRenderOpenGL3DShader::drawLine(int x1, int y1, int x2, int y2, uint32 c
 
 	_lineShader->use();
 	_lineShader->setUniform("color", colorValue);
+
+	glViewport(0, 0, _width, _height);
+
 	setProjection2D(_lineShader);
 
 	glDrawArrays(GL_LINES, 0, 2);
@@ -610,25 +623,50 @@ bool BaseRenderOpenGL3DShader::drawLine(int x1, int y1, int x2, int y2, uint32 c
 }
 
 void BaseRenderOpenGL3DShader::fadeToColor(byte r, byte g, byte b, byte a) {
+	float left, right, bottom, top;
+
+	left = _viewportRect.left;
+	right = _viewportRect.right;
+	bottom = _viewportRect.bottom;
+	top = _viewportRect.top;
+
+	// position coords
+	LineVertex vertices[4];
+	vertices[0].x = left;
+	vertices[0].y = bottom;
+	vertices[0].z = 0.0f;
+	vertices[1].x = left;
+	vertices[1].y = top;
+	vertices[1].z = 0.0f;
+	vertices[2].x = right;
+	vertices[2].y = bottom;
+	vertices[2].z = 0.0f;
+	vertices[3].x = right;
+	vertices[3].y = top;
+	vertices[3].z = 0.0f;
+
 	Math::Vector4d color;
 	color.x() = r / 255.0f;
 	color.y() = g / 255.0f;
 	color.z() = b / 255.0f;
 	color.w() = a / 255.0f;
 
-	setSpriteBlendMode(Graphics::BLEND_UNKNOWN);
+	glEnable(GL_BLEND);
+	setSpriteBlendMode(Graphics::BLEND_NORMAL);
 
 	glDisable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-	glBindBuffer(GL_ARRAY_BUFFER, _fadeVBO);
 	_lastTexture = nullptr;
+
+	glViewport(0, 0, _width, _height);
+	setProjection2D(_fadeShader);
 
 	_fadeShader->use();
 	_fadeShader->setUniform("color", color);
-	setProjection2D(_fadeShader);
+
+	glBindBuffer(GL_ARRAY_BUFFER, _fadeVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(LineVertex), vertices);
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
@@ -645,8 +683,9 @@ BaseImage *BaseRenderOpenGL3DShader::takeScreenshot() {
 #endif
 	surface->create(_viewportRect.width(), _viewportRect.height(), format);
 
-	glReadPixels(_viewportRect.left, _viewportRect.height() - _viewportRect.bottom, _viewportRect.width(), _viewportRect.height(),
-				 GL_RGBA, GL_UNSIGNED_BYTE, surface->getPixels());
+	glReadPixels(_viewportRect.left, _viewportRect.height() - _viewportRect.bottom,
+	             _viewportRect.width(), _viewportRect.height(),
+	             GL_RGBA, GL_UNSIGNED_BYTE, surface->getPixels());
 	flipVertical(surface);
 	Graphics::Surface *converted = surface->convertTo(getPixelFormat());
 	screenshot->copyFrom(converted);
@@ -664,23 +703,43 @@ bool BaseRenderOpenGL3DShader::disableShadows() {
 	return true;
 }
 
-void BaseRenderOpenGL3DShader::displayShadow(BaseObject *object, const DXVector3 *lightPos, bool lightPosRelative) {
-	if (!_ready || !object || !lightPos)
+void BaseRenderOpenGL3DShader::displaySimpleShadow(BaseObject *object) {
+	if (!_ready || !object)
 		return;
 
-	// redirect simple shadow if needed
-	bool simpleShadow = _gameRef->getMaxShadowType(object) <= SHADOW_SIMPLE;
-	if (!_gameRef->_supportsRealTimeShadows)
-		simpleShadow = true;
-	if (simpleShadow)
-		return renderSimpleShadow(object);
+	BaseSurface *shadowImage;
+	if (object->_shadowImage) {
+		shadowImage = object->_shadowImage;
+	} else {
+		shadowImage = _gameRef->_shadowImage;
+	}
 
-	// TODO: to be implemented
-	return;
-}
+	if (!shadowImage) {
+		return;
+	}
 
-void BaseRenderOpenGL3DShader::renderSimpleShadow(BaseObject *object) {
-	// TODO: to be implemented
+	DXMatrix scale, trans, rot, finalm;
+	DXMatrixScaling(&scale, object->_shadowSize * object->_scale3D, 1.0f, object->_shadowSize * object->_scale3D);
+	DXMatrixRotationY(&rot, degToRad(object->_angle));
+	DXMatrixTranslation(&trans, object->_posVector._x, object->_posVector._y, object->_posVector._z);
+	DXMatrixMultiply(&finalm, &scale, &rot);
+	DXMatrixMultiply(&finalm, &finalm, &trans);
+	setWorldTransform(finalm);
+
+	glFrontFace(GL_CCW);
+
+	glDepthMask(GL_FALSE);
+	glEnable(GL_TEXTURE_2D);
+	static_cast<BaseSurfaceOpenGL3D *>(shadowImage)->setTexture();
+
+	_simpleShadowShader->use();
+
+	glBindBuffer(GL_ARRAY_BUFFER, _simpleShadowVBO);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisable(GL_TEXTURE_2D);
+	glDepthMask(GL_TRUE);
 }
 
 void BaseRenderOpenGL3DShader::setSpriteBlendMode(Graphics::TSpriteBlendMode blendMode, bool forceChange) {
@@ -719,10 +778,20 @@ int BaseRenderOpenGL3DShader::getMaxActiveLights() {
 bool BaseRenderOpenGL3DShader::invalidateTexture(BaseSurfaceOpenGL3D *texture) {
 	if (_lastTexture == texture)
 		_lastTexture = nullptr;
-	if (_batchTexture == texture)
-		_batchTexture = nullptr;
 
 	return true;
+}
+
+bool BaseRenderOpenGL3DShader::invalidateDeviceObjects() {
+	return STATUS_OK;
+}
+
+bool BaseRenderOpenGL3DShader::restoreDeviceObjects() {
+	return STATUS_OK;
+}
+
+bool BaseRenderOpenGL3DShader::resetDevice() {
+	return STATUS_OK;
 }
 
 // implements D3D LightEnable()
@@ -737,8 +806,8 @@ void BaseRenderOpenGL3DShader::lightEnable(int index, bool enable) {
 
 // backend layer 3DLight::SetLight
 void BaseRenderOpenGL3DShader::setLightParameters(int index, const DXVector3 &position,
-												  const DXVector3 &direction,
-												  const DXVector4 &diffuse, bool spotlight) {
+	                                          const DXVector3 &direction,
+	                                          const DXVector4 &diffuse, bool spotlight) {
 	Math::Vector4d position4d;
 	position4d.x() = position._x;
 	position4d.y() = position._y;
@@ -776,13 +845,13 @@ void BaseRenderOpenGL3DShader::setLightParameters(int index, const DXVector3 &po
 
 // backend layer AdSceneGeometry::Render
 void BaseRenderOpenGL3DShader::renderSceneGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks,
-											   const BaseArray<AdGeneric *> &generics, const BaseArray<Light3D *> &lights, Camera3D *camera) {
+	                                           const BaseArray<AdGeneric *> &generics, const BaseArray<Light3D *> &lights, Camera3D *camera) {
 	// don't render scene geometry, as OpenGL ES 2 has no wireframe rendering and we don't have a shader alternative yet
 }
 
 // backend layer 3DShadowVolume::Render()
 void BaseRenderOpenGL3DShader::renderShadowGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks,
-													const BaseArray<AdGeneric *> &generics, Camera3D *camera) {
+	                                            const BaseArray<AdGeneric *> &generics, Camera3D *camera) {
 	DXMatrix matIdentity;
 	DXMatrixIdentity(&matIdentity);
 
@@ -797,8 +866,8 @@ void BaseRenderOpenGL3DShader::renderShadowGeometry(const BaseArray<AdWalkplane 
 
 	// no texture
 	_lastTexture = nullptr;
-	glDisable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
 
 	glFrontFace(GL_CW); // WME DX have CCW
 
@@ -844,7 +913,7 @@ bool BaseRenderOpenGL3DShader::setViewport(int left, int top, int right, int bot
 	_viewport._y = top;
 	_viewport._width = right - left;
 	_viewport._height = bottom - top;
-	glViewport(left, _height - bottom, right - left, bottom - top);
+	glViewport(left, top, right - left, bottom - top);
 	return true;
 }
 
@@ -857,7 +926,8 @@ bool BaseRenderOpenGL3DShader::setViewport3D(DXViewport *viewport) {
 
 bool BaseRenderOpenGL3DShader::setProjection2D(OpenGL::Shader *shader) {
 	DXMatrix matrix2D;
-	DXMatrixOrthoOffCenterLH(&matrix2D, 0, _width, 0, _height, 0.0f, 1.0f);
+	DXMatrixIdentity(&matrix2D);
+	DXMatrixOrthoOffCenterLH(&matrix2D, 0, _width, _height, 0, 0.0f, 1.0f);
 
 	// convert DX [0, 1] depth range to OpenGL [-1, 1] depth range.
 	matrix2D.matrix._33 = 2.0f;
@@ -889,6 +959,10 @@ bool BaseRenderOpenGL3DShader::setWorldTransform(const DXMatrix &transform) {
 	_xmodelShader->use();
 	_xmodelShader->setUniform("modelMatrix", modelMatrix);
 	_xmodelShader->setUniform("normalMatrix", normalMatrix);
+
+	_simpleShadowShader->use();
+	_simpleShadowShader->setUniform("modelMatrix", modelMatrix);
+	_simpleShadowShader->setUniform("normalMatrix", normalMatrix);
 
 	_shadowVolumeShader->use();
 	_shadowVolumeShader->setUniform("modelMatrix", modelMatrix);

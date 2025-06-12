@@ -247,10 +247,7 @@ public:
 		return syncGame(s);
 	}
 
-	Common::Error loadGameStream(Common::SeekableReadStream *stream) override {
-		Common::Serializer s(stream, nullptr);
-		return syncGame(s);
-	}
+	Common::Error loadGameStream(Common::SeekableReadStream *stream) override;
 
 	bool hasFeature(EngineFeature f) const override {
 		return
@@ -284,7 +281,7 @@ public:
 	void setDebugShowHotAreas(bool enable) { _debugShowHotAreas = enable; }
 	bool getDebugShowHotAreas() const { return _debugShowHotAreas; }
 
-	static void dumpFrame(const Graphics::ManagedSurface &surf, const char *name);
+	static void dumpFrame(const Graphics::Surface &surf, const char *name);
 
 	void dimPalForWillyDialog(bool force);
 

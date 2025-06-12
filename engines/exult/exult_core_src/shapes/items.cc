@@ -325,6 +325,17 @@ void Setup_text(bool si, bool expansion, bool sibeta) {
 	const bool is_patch = is_system_path_defined("<PATCH>");
 	// Always read from exultmsg.txt
 	// TODO: allow multilingual exultmsg.txt files.
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// auto exultmsg = [&]() {
+	//     if (is_patch && U7exists(PATCH_EXULTMSG)) {
+	//         return ExultEngine::getInstance()->getFileAdapter()->openFileForReading(PATCH_EXULTMSG);
+	//     }
+	//     return ExultEngine::getInstance()->getFileAdapter()->openFileForObject(
+	//             BUNDLE_CHECK(BUNDLE_EXULT_FLX, EXULT_FLX), EXULT_FLX_EXULTMSG_TXT);
+	// }();
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
 	auto exultmsg = [&]() {
 		if (is_patch && U7exists(PATCH_EXULTMSG)) {
 			return IExultDataSource(PATCH_EXULTMSG, -1);

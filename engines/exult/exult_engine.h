@@ -5,8 +5,10 @@
 
 #include "engines/engine.h"
 #include "common/config-manager.h"
-#include "common/fsnode.h"
-#include "metaengine/metaengine.h"
+#include "common/fs.h"
+#include "engines/metaengine.h"
+#include "engines/game.h" // Required for GameDescription and PlainGameList
+#include "common/error.h" // Required for Common::Error and kNoError/kErrorSystem
 
 // Forward declarations for our adapters
 namespace ScummVM {
@@ -17,13 +19,6 @@ namespace Exult {
     class ExultFileAdapter;
 } // namespace Exult
 } // namespace ScummVM
-
-// Forward declarations for Exult_Engine_s core components (to be defined/included later)
-// namespace ExultCore {
-//     class Game_Manager;
-//     class Usecode_Machine;
-//     // ... other Exult classes
-// }
 
 namespace ScummVM {
 namespace Exult {
@@ -38,53 +33,49 @@ public:
     virtual const char *getEngineVersion() const { return "0.1-dev"; } 
     virtual const char *getGameVersion() const { return "Various"; } 
 
-    virtual Error initialize(const Common::FSNode& gamePath, const Common::String& gameLanguage = "en");
-    virtual void run();
-    virtual void shutdown();
-
-    // Accessors for adapters if needed by other parts of the bridge (unlikely for now)
-    // ExultGraphicsAdapter* getGraphicsAdapter() { return _graphicsAdapter; }
-    // ExultInputAdapter* getInputAdapter() { return _inputAdapter; }
-    // ExultAudioAdapter* getAudioAdapter() { return _audioAdapter; }
-    // ExultFileAdapter* getFileAdapter() { return _fileAdapter; }
+    virtual Common::Error initialize(const Common::FSNode& gamePath, const Common::String& gameLanguage = "en");
+    virtual Common::Error run(); // Corrected return type to Common::Error
+    void shutdown(); // Engine::shutdown() is not virtual, so no override
 
 private:
-    // Adapters for ScummVM subsystems
     ExultGraphicsAdapter* _graphicsAdapter;
     ExultInputAdapter* _inputAdapter;
     ExultAudioAdapter* _audioAdapter;
     ExultFileAdapter* _fileAdapter;
 
-    // Pointers to Exult_Engine_s core systems (bridged or direct)
-    // ::ExultCore::Game_Manager* _exultGameManager;
-    // ::ExultCore::Usecode_Machine* _exultUsecodeVM;
-    // ...
-
     bool _initialized;
     Common::FSNode _gamePath;
 
-    // These methods will now likely use the adapters
-    void processInputEvents(); // Uses _inputAdapter
-    void updateGameLogic();    // Calls Exult_Engine_s core logic
-    void renderFrame();        // Uses _graphicsAdapter
+    void processInputEvents();
+    void updateGameLogic();
+    void renderFrame();
 };
 
-class ExultMetaEngine : public MetaEngine {
+// ExultMetaEngine should inherit from MetaEngineDetection to override identifyGame and getSupportedGames
+class ExultMetaEngine : public MetaEngineDetection {
 public:
     ExultMetaEngine();
 
-    virtual const char *getName() const { return "Exult"; }
-    virtual const char *getOriginalName() const { return "Ultima VII"; }
+    virtual const char *getName() const override { return "Exult"; } // Added override
+    virtual const char *getEngineName() const override { return "Exult"; } // Added override
+    virtual const char *getOriginalCopyright() const override { return "Exult Team"; } // Added override
     virtual const char *getDesc() const { return "Exult engine for Ultima VII: The Black Gate and Serpent Isle"; }
 
-    virtual bool canDetect(OSystem *syst, const Common::FSNode& node, DetectionLevel level = kDetectionLevel_Complete) const;
-    virtual Engine *createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage = "en", const void *meDesc = nullptr);
-    virtual void getSupportedGames(Common::Array<GameDescription> &games) const;
-    virtual void freeInstance(Engine *engine);
+    virtual Common::Error identifyGame(DetectedGame &game, const void **descriptor) override;
+    virtual PlainGameList getSupportedGames() const override;
+    virtual DetectedGames detectGames(const Common::FSList &fslist, uint32 skipADFlags = 0, bool skipIncomplete = false) override; // Added override
+    virtual uint getMD5Bytes() const override { return 0; } // Added override
+    virtual void dumpDetectionEntries() const override; // Added override
+
+    // These are not part of MetaEngineDetection, but are needed for the engine to function
+    // They will be called by the main ScummVM application through the MetaEngine interface
+    Engine *createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage = "en", const void *meDesc = nullptr);
+    void freeInstance(Engine *engine);
 };
 
 } // namespace Exult
 } // namespace ScummVM
 
 #endif // EXULT_ENGINE_H
+
 

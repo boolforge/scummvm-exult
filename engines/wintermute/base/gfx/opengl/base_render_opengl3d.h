@@ -49,21 +49,27 @@ class BaseRenderOpenGL3D : public BaseRenderer3D {
 		float z;
 		float u;
 		float v;
-		uint8 r;
-		uint8 g;
-		uint8 b;
-		uint8 a;
+		float r;
+		float g;
+		float b;
+		float a;
+	};
+
+	struct LineVertex {
+		float x;
+		float y;
+		float z;
 	};
 
 	struct SimpleShadowVertex {
-		float u;
-		float v;
 		float nx;
 		float ny;
 		float nz;
 		float x;
 		float y;
 		float z;
+		float u;
+		float v;
 	};
 
 public:
@@ -71,6 +77,11 @@ public:
 	~BaseRenderOpenGL3D() override;
 
 	bool invalidateTexture(BaseSurfaceOpenGL3D *texture) override;
+
+	bool invalidateDeviceObjects() override;
+	bool restoreDeviceObjects() override;
+
+	bool resetDevice() override;
 
 	void setSpriteBlendMode(Graphics::TSpriteBlendMode blendMode, bool forceChange = false) override;
 
@@ -85,10 +96,8 @@ public:
 
 	bool enableShadows() override;
 	bool disableShadows() override;
-	void displayShadow(BaseObject *object, const DXVector3 *lightPos, bool lightPosRelative) override;
 	bool stencilSupported() override;
 
-	void dumpData(const char *filename) override {}
 	BaseImage *takeScreenshot() override;
 	void fadeToColor(byte r, byte g, byte b, byte a) override;
 
@@ -136,10 +145,10 @@ public:
 	bool commitSpriteBatch() override;
 
 	bool drawSpriteEx(BaseSurface *texture, const Rect32 &rect, const Vector2 &pos, const Vector2 &rot, const Vector2 &scale,
-					  float angle, uint32 color, bool alphaDisable, Graphics::TSpriteBlendMode blendMode, bool mirrorX, bool mirrorY) override;
+	                  float angle, uint32 color, bool alphaDisable, Graphics::TSpriteBlendMode blendMode, bool mirrorX, bool mirrorY) override;
 
 	void renderSceneGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks,
-							 const BaseArray<AdGeneric *> &generics, const BaseArray<Light3D *> &lights, Camera3D *camera) override;
+	                         const BaseArray<AdGeneric *> &generics, const BaseArray<Light3D *> &lights, Camera3D *camera) override;
 	void renderShadowGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks, const BaseArray<AdGeneric *> &generics, Camera3D *camera) override;
 
 	Mesh3DS *createMesh3DS() override;
@@ -152,9 +161,9 @@ public:
 	void setPostfilter(PostFilter postFilter) override { _postFilterMode = postFilter; };
 
 private:
-	void renderSimpleShadow(BaseObject *object);
+	void displaySimpleShadow(BaseObject *object) override;
 
-	SimpleShadowVertex _simpleShadow[4]{};
+	SimpleShadowVertex _simpleShadow[4];
 	Common::Array<DXVector4> _lightPositions;
 	Common::Array<DXVector3> _lightDirections;
 	GLuint _filterTexture;

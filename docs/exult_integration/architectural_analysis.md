@@ -122,13 +122,20 @@ Based on the provided documentation, the following strategies will be employed f
     *   Address potential SDL3 audio callback timing differences if Exult's mixer is sensitive to this (e.g., fixed-size buffer requests).
 
 ### 3.5. File/Resource Loading Adapter
-*   **Target:** Exult's `files/` module, `Shape_set::loadShape()`, `Flic::play()`, and any direct file operations (`fopen`, etc.).
-*   **Strategy:** Replace all direct file access with ScummVM's virtual filesystem APIs.
-*   **Implementation:**
-    *   Use `_system->getFilesystemFactory()->openFileRead(filename)` to get a `Common::SeekableReadStream*`.
-    *   Wrap this stream in an Exult-compatible file reading interface if needed, or modify Exult's file reading functions to use these streams directly.
-        `ExultFile* file = new ExultFile(scummvm_stream);` (conceptual)
-    *   For save games: Use `getSaveFileManager()->openFile(slot, Common::kFileModeWrite)` to get a `Common::WriteStream*` and `getSaveFileManager()->openFile(slot, Common::kFileModeRead)` for `Common::ReadStream*`.
+*   **Target:** Exult's `files/` module (specifically `U7file` and its subclasses like `Flat`, `Flex`, `IFF`, `Table`), `U7FileManager`, `Shape_set::loadShape()`, `Flic::play()`, and any direct file operations (`fopen`, `std::ifstream`, etc.). The old `IDataSource` hierarchy (e.g., `IExultDataSource`, `IFileDataSource`, `IBufferDataSource` from `databuf.h`) is also targeted for replacement or significant adaptation.
+*   **Strategy:** Replace all direct file access and the old `IDataSource` system with ScummVM's virtual filesystem APIs, primarily using `ScummVM::Common::SeekableReadStream`. The `ExultFileAdapter` serves as a bridge, utilizing `OSystem::getFilesystemFactory()` to obtain streams.
+*   **Implementation Details for `U7file` and subclasses:**
+    *   The `ExultFileAdapter` is responsible for opening files via ScummVM's VFS and providing `ScummVM::Common::SeekableReadStream` instances.
+    *   The base class `U7file` has been refactored to accept and manage a `std::unique_ptr<ScummVM::Common::SeekableReadStream>` in its constructor. Its `retrieve` method now uses this stream to read object data.
+    *   Subclasses of `U7file` (`Flat`, `Flex`, `IFF`, `Table`) have been updated:
+        *   Their constructors now accept a `std::unique_ptr<ScummVM::Common::SeekableReadStream>` which is passed to the `U7file` base class.
+        *   Their internal `index_file()` methods (or equivalent logic for parsing file headers and object/chunk tables) have been refactored to use the provided ScummVM stream for all read operations (e.g., using `stream->read_le32()`, `stream->read()`).
+        *   Dependencies on the old `IDataSource` system (e.g., `IFileDataSource`, `IExultDataSource` from `databuf.h`) and related helper templates like `U7DataFile` and `U7DataBuffer` have been removed from these classes.
+    *   The `U7FileManager` will utilize `ExultFileAdapter` to get streams and then instantiate the appropriate `U7file` subclass (`Flat`, `Flex`, `IFF`, `Table`) by passing the stream to its constructor. Type detection logic (e.g., `is_flex`, `is_iff`) has been or will be adapted to operate on ScummVM streams.
+*   **General Implementation:**
+    *   Other parts of Exult that perform file I/O (e.g., `Shape_set::loadShape()`, `Flic::play()`) will also need to be modified to request streams from `ExultFileAdapter` or directly via `OSystem` if appropriate, and use ScummVM stream APIs for reading.
+    *   For save games: Use `getSaveFileManager()->openFile(slot, Common::kFileModeWrite)` to get a `Common::WriteStream*` and `getSaveFileManager()->openFile(slot, Common::kFileModeRead)` for `Common::ReadStream*`. Exult's save/load logic will need to be adapted to use these streams.
+    *   The `databuf.h` file, containing the old `IDataSource` hierarchy, will be progressively phased out or its components significantly refactored as direct stream usage becomes prevalent. Buffer-oriented classes like `IFFBuffer` or `U7DataBuffer` will need careful review to ensure they correctly integrate with the new stream-based approach, potentially by operating on data already read into memory via a ScummVM stream.
 
 ### 3.6. Scheduler/Tick Adapter
 *   **Target:** Exult's `Game_manager::tick()` and its reliance on `SDL_Delay` or similar timing.

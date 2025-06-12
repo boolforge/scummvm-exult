@@ -660,6 +660,12 @@ class LipSynchReader {
 
 public:
 	LipSynchReader()
+			// TODO: Replace with ScummVM stream access via ExultFileAdapter
+			// The final implementation will look something like:
+			// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(MAINSHP_FLX, 0x0F);
+			// data = std::make_unique<IStreamDataView>(stream); // Would need to create this adapter class
+			
+			// For now, maintain backward compatibility with a fallback to IExultDataSource
 			: data(std::make_unique<IExultDataSource>(
 					  MAINSHP_FLX, PATCH_MAINSHP, 0x0F)) {}
 

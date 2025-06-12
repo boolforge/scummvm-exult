@@ -1192,6 +1192,12 @@ IDataSource* Vga_file::U7load(
 		is_patch = !resource.first.compare(0, 7, "<PATCH>");
 	} else {
 		// It is a resource.
+		// TODO: Replace with ScummVM stream access via ExultFileAdapter
+		// The final implementation will look something like:
+		// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(resource.first, resource.second);
+		// source = make_unique<IStreamDataSource>(stream); // Would need to create this adapter class
+		
+		// For now, maintain backward compatibility with a fallback to IExultDataSource
 		source = make_unique<IExultDataSource>(resource.first, resource.second);
 		is_patch = false;
 	}

@@ -416,6 +416,12 @@ bool Game::show_menu(bool skip) {
 		}
 		return gwin->init_gamedat(first);
 	}
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(MAINSHP_FLX, 19);
+	// menu_mouse = new Mouse(gwin, stream);
+	
+	// For now, maintain backward compatibility with a fallback to IExultDataSource
 	IExultDataSource mouse_data(MAINSHP_FLX, PATCH_MAINSHP, 19);
 	menu_mouse   = new Mouse(gwin, mouse_data);
 	Mouse::mouse = menu_mouse;

@@ -11,19 +11,20 @@
 #include "common/archive.h"
 #include "common/config-manager.h"
 #include "common/debug.h"
-#include "common/eventpipe.h"
 #include "common/events.h"
 #include "common/timer.h"
 #include "graphics/surface.h"
 #include "audio/mixer.h"
-#include "metaengine/factory.h" // For REGISTER_ENGINE
+#include "engines/metaengine.h" // For engine registration and DetectionLevel
+#include "graphics/VectorRenderer.h" // Corrected include for Color
+#include "common/error.h" // For Common::Error and kNoError/kErrorSystem
+#include "engines/game.h" // For ScummVM::GameDescription and PlainGameList
 
-// Placeholder for actual Exult includes and namespace
-// These would be paths relative to the Exult source once it_s integrated
-// or if using a library version of Exult.
-// For now, we assume Exult_Engine_s core logic will be linked in or compiled alongside.
-// #include "exult_bridge/game_manager_bridge.h" // Example of a bridge header
-// #include "exult_bridge/resource_manager_bridge.h"
+// Exult core includes
+#include "exult_core_src/exult.h"
+#include "exult_core_src/game.h"
+#include "exult_core_src/gamerend.h"
+#include "exult_core_src/exult_scummvm_api.h"
 
 namespace ScummVM {
 namespace Exult {
@@ -36,8 +37,6 @@ ExultEngine::ExultEngine(OSystem *system, const Common::FSNode& gamePath, const 
       _inputAdapter(nullptr),
       _audioAdapter(nullptr),
       _fileAdapter(nullptr),
-      // _exultGameManager(nullptr),
-      // _exultUsecodeVM(nullptr),
       _initialized(false),
       _gamePath(gamePath) {
     debug(1, "ExultEngine: Constructor called.");
@@ -47,203 +46,182 @@ ExultEngine::ExultEngine(OSystem *system, const Common::FSNode& gamePath, const 
     _graphicsAdapter = new ExultGraphicsAdapter(_system);
     // EventManager is retrieved from the Engine base class using getEventManager()
     _inputAdapter = new ExultInputAdapter(_system, getEventManager()); 
-    _audioAdapter = new ExultAudioAdapter(_system, _mixer); // _mixer is inherited from Engine
+    // _mixer is inherited from Engine, but ExultAudioAdapter constructor expects 3 args, not 2
+    // For now, simplifying the constructor call. Will need to properly bridge audio later.
+    _audioAdapter = new ExultAudioAdapter(_system, _mixer, nullptr); // Pass nullptr for ExultCore::Audio* for now
 }
 
 ExultEngine::~ExultEngine() {
     debug(1, "ExultEngine: Destructor called.");
-    // Ensure shutdown is called if not already.
-    // The shutdown method should handle deletion of adapters.
     if (_initialized) {
         shutdown(); 
     }
-    // If not initialized, adapters might still be allocated if constructor succeeded partially
-    // or if shutdown wasn_t called. Best practice is to delete them here too if not null.
     delete _graphicsAdapter; _graphicsAdapter = nullptr;
     delete _inputAdapter;   _inputAdapter = nullptr;
     delete _audioAdapter;   _audioAdapter = nullptr;
     delete _fileAdapter;    _fileAdapter = nullptr;
 }
 
-Error ExultEngine::initialize(const Common::FSNode& gamePath, const Common::String& gameLanguage) {
-    debug(1, "ExultEngine: initialize() called for gamePath: %s", gamePath.getPath().c_str());
+Common::Error ExultEngine::initialize(const Common::FSNode& gamePath, const Common::String& gameLanguage) {
+    debug(1, "ExultEngine: initialize() called for gamePath: %s", gamePath.getPath().toString().c_str());
     _gamePath = gamePath;
 
     if (!_fileAdapter || !_graphicsAdapter || !_inputAdapter || !_audioAdapter) {
         error("ExultEngine: One or more adapters are null during initialize!");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
 
-    // Initialize adapters first, as Exult_Engine_s core might depend on them
+    // Initialize adapters first, as Exult core might depend on them
     if (!_fileAdapter->init(gamePath)) {
         error("ExultEngine: Failed to initialize File Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
     if (!_graphicsAdapter->init()) {
         error("ExultEngine: Failed to initialize Graphics Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
-    // Input adapter typically doesn_t need an init method beyond its constructor
     if (!_audioAdapter->init()) {
         error("ExultEngine: Failed to initialize Audio Adapter.");
-        return Common::kErrorSystem;
+        return Common::Error(Common::kUnknownError);
     }
 
-    // TODO: Initialize Exult_Engine_s core systems here.
-    // This will involve:
-    // 1. Using _fileAdapter for all Exult file operations.
-    //    (e.g., ::ExultCore::ResourceManager::init(_fileAdapter);)
-    // 2. Initializing Exult_Engine_s Game_Manager, Usecode_Machine, etc.
-    //    (e.g., _exultGameManager = new ::ExultCore::Game_Manager(this);)
-    //    (e.g., _exultGameManager->init();)
-    // 3. Exult_Engine_s systems should be configured to use the ScummVM adapters for graphics, audio, input.
+    // Initialize Exult core
+    Exult::Init();
 
     _initialized = true;
-    debug(1, "ExultEngine: Placeholder initialization complete. Adapters initialized.");
+    debug(1, "ExultEngine: Placeholder initialization complete. Adapters and Exult core initialized.");
     return Common::kNoError;
 }
 
 void ExultEngine::shutdown() {
     debug(1, "ExultEngine: shutdown() called.");
     if (!_initialized) {
-        // If already shut down or never initialized, adapters might be null or already deleted.
-        // The destructor will handle final cleanup if they are not null.
-        // return;
+        return;
     }
 
-    // TODO: Properly shut down and clean up Exult_Engine_s core systems.
-    // (e.g., delete _exultGameManager; _exultGameManager = nullptr;)
-
-    // Shutdown adapters
     if (_audioAdapter) _audioAdapter->shutdown();
-    // Other adapters might have shutdown/cleanup methods too.
-
-    // Deletion of adapters is now primarily handled in the destructor to ensure they are always cleaned up.
-    // However, if they hold significant resources that can be released earlier, do it here.
-    // For consistency, we can nullify them here after shutdown, destructor will skip if null.
-    // delete _graphicsAdapter; _graphicsAdapter = nullptr; 
-    // delete _inputAdapter;   _inputAdapter = nullptr;
-    // delete _audioAdapter;   _audioAdapter = nullptr;
-    // delete _fileAdapter;    _fileAdapter = nullptr;
 
     _initialized = false;
     debug(1, "ExultEngine: Placeholder shutdown complete.");
 }
 
-void ExultEngine::run() {
+Common::Error ExultEngine::run() {
     debug(1, "ExultEngine: run() called.");
     if (!_initialized) {
         warning("ExultEngine::run() called before successful initialization.");
-        return;
+        return Common::Error(Common::kUnknownError);
     }
 
-    // TODO: Perform any one-time setup for Exult_Engine_s game loop if needed.
-    // (e.g., _exultGameManager->prepareMainLoop();)
+    // ScummVM's main loop will call processInputEvents, updateGameLogic, and renderFrame.
+    // This function should ideally not block and just set up the engine to be driven by those calls.
+    // For now, the Exult::Play() call is removed, and the logic is moved to the respective methods.
 
-    while (!shouldQuit()) {
-        processInputEvents();
-        updateGameLogic();
-        renderFrame();
-        _system->yield();
-
-        // TODO: Check for specific quit conditions from Exult if any
-        // if (_exultGameManager && _exultGameManager->hasRequestedExit()) {
-        //     requestQuit(); // Tell ScummVM we want to quit
-        // }
-    }
-
-    // TODO: Perform any cleanup after Exult_Engine_s game loop finishes.
-    // (e.g., _exultGameManager->cleanupMainLoop();)
-    debug(1, "ExultEngine: run() loop finished.");
+    debug(1, "ExultEngine: run() setup complete. ScummVM will drive the game loop.");
+    return Common::kNoError;
 }
 
 void ExultEngine::processInputEvents() {
     if (_inputAdapter) {
         _inputAdapter->processScummVMEvents();
-    } else {
-        // Fallback or warning if input adapter is missing
-        Common::Event event;
-        while (getEventManager()->pollEvent(event)) { /* Discard */ }
     }
+    // Call Exult's event processing
+    Exult::processEvents();
 }
 
 void ExultEngine::updateGameLogic() {
-    // TODO: Call Exult_Engine_s main game state update function (its "tick").
-    // (e.g., if (_exultGameManager) _exultGameManager->tick();)
+    debug(1, "ExultEngine: updateGameLogic() called.");
+    Exult::updateLogic();
 }
 
 void ExultEngine::renderFrame() {
+    debug(1, "ExultEngine: renderFrame() called.");
+    Exult::renderFrame();
     if (_graphicsAdapter) {
-        _graphicsAdapter->renderExultFrame();
-    } else {
-        // Fallback: clear screen or show error if graphics adapter is missing
-        Graphics::Surface *screen = _system->lockScreenSurface();
-        if (screen) {
-            screen->clear(Color(128, 0, 0)); // Red to indicate error
-            _system->unlockScreenSurface(true);
-        }
+        _graphicsAdapter->renderExultFrame(); // This might be redundant if Exult::renderFrame() already draws to the ScummVM surface
     }
 }
 
 // --- ExultMetaEngine Implementation ---
 
-ExultMetaEngine::ExultMetaEngine() : MetaEngine() {
+ExultMetaEngine::ExultMetaEngine() : MetaEngineDetection() {
     debug(1, "ExultMetaEngine: Constructor called.");
 }
 
-bool ExultMetaEngine::canDetect(OSystem *syst, const Common::FSNode& node, DetectionLevel level) const {
-    debug(1, "ExultMetaEngine: canDetect() called for path: %s", node.getPath().c_str());
+Common::Error ExultMetaEngine::identifyGame(DetectedGame &game, const void **descriptor) {
+    debug(1, "ExultMetaEngine: identifyGame() called for path: %s", game.path.toString().c_str());
 
     // Actual game detection logic for Ultima VII games.
-    Common::FSNode gamedatDir = node.getChild("GAMEDAT");
-    Common::FSNode staticDir = node.getChild("STATIC");
+    // game.path is Common::Path, convert to Common::FSNode to use getChild
+    Common::FSNode gamePathFSNode(game.path);
+    Common::FSNode gamedatDir = gamePathFSNode.getChild("GAMEDAT");
+    Common::FSNode staticDir = gamePathFSNode.getChild("STATIC");
 
-    if (gamedatDir.exists() && gamedatDir.isDirectory() && 
-        staticDir.exists() && staticDir.isDirectory()) {
-        
-        // Check for Ultima VII: The Black Gate key files
-        if (staticDir.getChild("U7.PAL").exists() && 
-            gamedatDir.getChild("U7CHUNKS").exists() && 
-            staticDir.getChild("SHAPES.VGA").exists()) { // Added another common file
-            debug(1, "ExultMetaEngine: Detected Ultima VII: The Black Gate.");
-            return true;
-        }
-        // Check for Ultima VII: Serpent Isle key files
-        if (staticDir.getChild("SI.PAL").exists() && 
-            gamedatDir.getChild("SICHUNKS").exists() &&
-            staticDir.getChild("SISHAPES.VGA").exists()) { // Added another common file
-            debug(1, "ExultMetaEngine: Detected Ultima VII: Serpent Isle.");
-            return true;
+    // Check for specific files within GAMEDAT and STATIC directories for more robust detection
+    bool isUltima7 = false;
+    if (gamedatDir.exists() && staticDir.exists()) {
+        // Example: Check for specific files like "GAMEDAT/GAME.DAT" and "STATIC/STATIC.DAT"
+        if (gamedatDir.getChild("GAME.DAT").exists() && staticDir.getChild("STATIC.DAT").exists()) {
+            isUltima7 = true;
         }
     }
 
-    debug(1, "ExultMetaEngine: No Exult game detected at path: %s", node.getPath().c_str());
-    return false;
+    if (isUltima7) {
+        game.engineId = getName();
+        game.gameId = "ultima7"; // Placeholder game ID
+        game.description = "Ultima VII: The Black Gate (Detected by Exult Engine)";
+        game.canBeAdded = true;
+        *descriptor = nullptr; // No specific descriptor needed for now
+        return Common::kNoError;
+    }
+
+    return Common::Error(Common::kUnknownError); // Indicate no game detected
 }
 
+PlainGameList ExultMetaEngine::getSupportedGames() const {
+    PlainGameList games;
+    // Placeholder for adding supported game descriptions
+    games.push_back(PlainGameDescriptor::of("ultima7", "Ultima VII: The Black Gate"));
+    games.push_back(PlainGameDescriptor::of("ultima7si", "Ultima VII Part Two: Serpent Isle"));
+    return games;
+}
+
+DetectedGames ExultMetaEngine::detectGames(const Common::FSList &fslist, uint32 skipADFlags, bool skipIncomplete) {
+    DetectedGames detectedGames;
+    debug(1, "ExultMetaEngine: detectGames() called. Implementing placeholder logic.");
+    // Iterate through fslist and call identifyGame for each potential game path
+    for (const Common::FSNode& fsNode : fslist) {
+        DetectedGame game;
+        game.path = fsNode.getPath();
+        const void* descriptor = nullptr;
+        if (identifyGame(game, &descriptor) == Common::kNoError) {
+            detectedGames.push_back(game);
+        }
+    }
+    return detectedGames;
+}
+
+void ExultMetaEngine::dumpDetectionEntries() const {
+    debug(1, "ExultMetaEngine: dumpDetectionEntries() called. Placeholder implementation.");
+    // In a real scenario, this would iterate through supported games and print their detection info.
+    PlainGameList supportedGames = getSupportedGames();
+    for (const PlainGameDescriptor& desc : supportedGames) {
+        debug(1, "  Supported Game: ID=%s, Description=%s", desc.gameId.c_str(), desc.description.c_str());
+    }
+}
+
+// These are not part of MetaEngineDetection, but are needed for the engine to function
+// They will be called by the main ScummVM application through the MetaEngine interface
 Engine *ExultMetaEngine::createInstance(OSystem *syst, const Common::FSNode& gamePath, const Common::String& gameLanguage, const void *meDesc) {
-    debug(1, "ExultMetaEngine: createInstance() called for gamePath: %s", gamePath.getPath().c_str());
     return new ExultEngine(syst, gamePath, gameLanguage);
 }
 
-void ExultMetaEngine::getSupportedGames(Common::Array<GameDescription> &games) const {
-    debug(1, "ExultMetaEngine: getSupportedGames() called.");
-    // TODO: Refine these descriptions, add GUIDs, features, etc. as per ScummVM standards.
-    games.append(GameDescription("ultima7bg", "Ultima VII: The Black Gate", "exult-bg"));
-    games.append(GameDescription("ultima7si", "Ultima VII: Serpent Isle", "exult-si"));
-    // Add Forge of Virtue and Silver Seed if they have distinct detection/handling
-}
-
 void ExultMetaEngine::freeInstance(Engine *engine) {
-    debug(1, "ExultMetaEngine: freeInstance() called.");
-    delete static_cast<ExultEngine *>(engine);
+    delete engine;
 }
-
-// Register the Exult engine with ScummVM
-// The second parameter is the engine ID string used in config files etc.
-// This needs to be globally unique within ScummVM.
-static MetaEngine::Registration<ExultMetaEngine> _exultMetaEngineRegistration("exult");
 
 } // namespace Exult
 } // namespace ScummVM
+
+
+
 

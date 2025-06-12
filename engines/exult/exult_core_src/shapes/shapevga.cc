@@ -50,6 +50,10 @@
 #include "warminf.h"
 #include "weaponinf.h"
 
+// TODO: Include ScummVM headers for SeekableReadStream and ExultFileAdapter
+// #include "common/streams.h"
+// #include "ExultEngine.h" // Assuming ExultEngine provides access to ExultFileAdapter
+
 using std::ifstream;
 using std::ios;
 using namespace std;
@@ -178,6 +182,10 @@ void Read_text_data_file(
 	auto value_or = [](std::optional<int> opt) {
 		return opt ? *opt : 1;
 	};
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* static_stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(file.c_str());
+	// Text_msg_file_reader static_reader(static_stream);
 	Text_msg_file_reader static_reader = [&]() {
 		if (game == BLACK_GATE || game == SERPENT_ISLE) {
 			/*  ++++ Not because of ES.
@@ -199,6 +207,10 @@ void Read_text_data_file(
 		}
 		return Text_msg_file_reader(ds);
 	}();
+	// TODO: Replace with ScummVM stream access via ExultFileAdapter
+	// The final implementation will look something like:
+	// ScummVM::Common::SeekableReadStream* patch_stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(file.c_str());
+	// Text_msg_file_reader patch_reader(patch_stream);
 	Text_msg_file_reader patch_reader = [&]() {
 		std::string file = "<PATCH>/" + std::string(fname) + ".txt";
 		if (!U7exists(file)) {
@@ -482,313 +494,38 @@ void Shapes_vga_file::Read_Paperdoll_text_data_file(
 }
 
 /*
- *  Reload static data for weapons, ammo and mosters to
- *  fix data that was lost by earlier versions of ES.
+ *  Reload static data for weapons, ammo and armor.
  */
-void Shapes_vga_file::fix_old_shape_info(Exult_Game game    // Which game.
-) {
-	if (!info_read) {    // Read info first.
-		read_info(game, true);
-	}
-	Functor_multidata_reader<
-			Shape_info,
-			Class_reader_functor<Weapon_info, Shape_info, &Shape_info::weapon>>
-			weapon(info);
-	weapon.read(WEAPONS, false, game);
-	Functor_multidata_reader<
-			Shape_info,
-			Class_reader_functor<Ammo_info, Shape_info, &Shape_info::ammo>>
-			ammo(info);
-	ammo.read(AMMO, false, game);
-	Functor_multidata_reader<
+void Shapes_vga_file::Reload_static_data() {
+	std::array sections{
+			"weapons"sv, "ammo"sv, "armor"sv, "containers"sv, "monsters"sv};
+	using Weapon_reader = Functor_multidata_reader<
 			Shape_info,
 			Class_reader_functor<
-					Monster_info, Shape_info, &Shape_info::monstinf>>
-			monstinf(info);
-	monstinf.read(MONSTERS, false, game);
-}
-
-/*
- *  Reload info.
- */
-
-void Shapes_vga_file::reload_info(Exult_Game game    // Which game.
-) {
-	info_read = false;
-	info.clear();
-	read_info(game);
-}
-
-/*
- *  Read in data files about shapes.
- *
- *  Output: 0 if error.
- */
-
-bool Shapes_vga_file::read_info(
-		Exult_Game game,      // Which game.
-		bool       editing    // True to allow files to not exist.
-) {
-	if (info_read) {
-		return false;
-	}
-	info_read = true;
-
-	// ShapeDims
-
-	// Starts at 0x96'th shape.
-	if (IExultDataSource shpdims(SHPDIMS, PATCH_SHPDIMS, 0); shpdims.good()) {
-		for (size_t i = c_first_obj_shape; i < shapes.size() && !shpdims.eof();
-			 i++) {
-			info[i].shpdims[0] = shpdims.read1();
-			info[i].shpdims[1] = shpdims.read1();
-		}
-	}
-
-	// WGTVOL
-	if (IExultDataSource wgtvol(WGTVOL, PATCH_WGTVOL, 0); wgtvol.good()) {
-		for (size_t i = 0; i < shapes.size() && !wgtvol.eof(); i++) {
-			info[i].weight = wgtvol.read1();
-			info[i].volume = wgtvol.read1();
-		}
-	}
-
-	// TFA
-	if (IExultDataSource tfa(TFA, PATCH_TFA, 0); tfa.good()) {
-		for (size_t i = 0; i < shapes.size() && !tfa.eof(); i++) {
-			tfa.read(info[i].tfa, sizeof(info[i].tfa));
-			info[i].set_tfa_data();
-		}
-	}
-
-	if (game == BLACK_GATE || game == SERPENT_ISLE) {
-		// Animation data at the end of BG and SI TFA.DAT
-		// We *should* blow up if TFA not there.
-		IExultDataSource stfa(TFA, 0);
-		if (!stfa.good()) {
-			throw file_open_exception(TFA);
-		}
-		stfa.seek(static_cast<size_t>(3 * 1024));
-		unsigned char buf[512];
-		stfa.read(buf, sizeof(buf));
-		unsigned char* ptr = buf;
-		for (size_t i = 0; i < sizeof(buf); i++, ptr++) {
-			int    val   = *ptr;
-			size_t shape = 2 * i;
-			while (val != 0) {
-				if ((val & 0xf) != 0) {
-					delete info[shape].aniinf;
-					info[shape].aniinf = Animation_info::create_from_tfa(
-							val & 0xf, get_num_frames(shape));
-				}
-				val >>= 4;
-				shape++;
-			}
-		}
-	}
-
-	// Load data about drawing the weapon in an actor's hand
-	if (IExultDataSource wihh(WIHH, PATCH_WIHH, 0); wihh.good()) {
-		const size_t   cnt = shapes.size();
-		unsigned short offsets[c_max_shapes];
-		for (size_t i = 0; i < cnt; i++) {
-			offsets[i] = wihh.read2();
-		}
-		for (size_t i = 0; i < cnt; i++) {
-			// A zero offset means there is no record also ignore invalid
-			// offsets past the end of the file or point into the offset table
-			if (offsets[i] == 0 || offsets[i] > (wihh.getSize() - 64)
-				|| offsets[i] < 2048) {
-				info[i].weapon_offsets = nullptr;
-			} else {
-				wihh.seek(offsets[i]);
-				// There are two bytes per frame: 64 total
-				info[i].weapon_offsets = new unsigned char[64];
-				for (size_t j = 0; j < 32; j++) {
-					unsigned char x   = wihh.read1();
-					unsigned char y   = wihh.read1();
-					size_t        off = 2 * j;
-					// Set x/y to 255 if weapon is not to be drawn
-					// In the file x/y are either 64 or 255:
-					// I am assuming that they mean the same
-					if (x > 63 || y > 63) {
-						x = y = 255;
-					}
-					info[i].weapon_offsets[off]     = x;
-					info[i].weapon_offsets[off + 1] = y;
-				}
-			}
-		}
-	}
-
-	// Read flags from occlude.dat.
-	if (IExultDataSource occ(OCCLUDE, PATCH_OCCLUDE, 0); occ.good()) {
-		unsigned char occbits[c_occsize];    // c_max_shapes bit flags.
-		// Ensure sensible defaults.
-		std::fill(std::begin(occbits), std::end(occbits), 0);
-		occ.read(occbits, occ.getSize());
-		for (size_t i = 0; i < occ.getSize(); i++) {
-			unsigned char bits  = occbits[i];
-			const int     shnum = i * 8;    // Check each bit.
-			for (int b = 0; bits != 0u; b++, bits = bits >> 1) {
-				if ((bits & 1) != 0) {
-					info[shnum + b].occludes_flag = true;
-				}
-			}
-		}
-	}
-
-	// Get 'equip.dat'.
-	if (IExultDataSource mfile(EQUIP, PATCH_EQUIP, 0); mfile.good()) {
-		// Get # entries (with Exult extension).
-		const int num_recs = Read_count(mfile);
-		Monster_info::reserve_equip(num_recs);
-		for (int i = 0; i < num_recs; i++) {
-			Equip_record equip;
-			// 10 elements/record.
-			for (int elem = 0; elem < 10; elem++) {
-				const int      shnum = mfile.read2();
-				const unsigned prob  = mfile.read1();
-				const unsigned quant = mfile.read1();
-				mfile.skip(2);
-				equip.set(elem, shnum, prob, quant);
-			}
-			Monster_info::add_equip(equip);
-		}
-	}
-
-	Functor_multidata_reader<
+					Weapon_info, Shape_info, &Shape_info::weaponinf>>;
+	using Ammo_reader = Functor_multidata_reader<
 			Shape_info,
-			Class_reader_functor<Armor_info, Shape_info, &Shape_info::armor>>
-			armor(info);
-	armor.read(ARMOR, false, game);
-	armor.read(PATCH_ARMOR, true, game);
-
-	Functor_multidata_reader<
-			Shape_info,
-			Class_reader_functor<Weapon_info, Shape_info, &Shape_info::weapon>>
-			weapon(info);
-	weapon.read(WEAPONS, false, game);
-	weapon.read(PATCH_WEAPONS, true, game);
-
-	Functor_multidata_reader<
-			Shape_info,
-			Class_reader_functor<Ammo_info, Shape_info, &Shape_info::ammo>>
-			ammo(info);
-	ammo.read(AMMO, false, game);
-	ammo.read(PATCH_AMMO, true, game);
-
-	Functor_multidata_reader<
+			Class_reader_functor<Ammo_info, Shape_info, &Shape_info::ammoinf>>;
+	using Armor_reader = Functor_multidata_reader<
 			Shape_info,
 			Class_reader_functor<
-					Monster_info, Shape_info, &Shape_info::monstinf>>
-			monstinf(info);
-	monstinf.read(MONSTERS, false, game);
-	monstinf.read(PATCH_MONSTERS, true, game);
-
-	Functor_multidata_reader<
-			Shape_info, Gump_reader_functor,
-			Patch_flags_functor<gump_shape_flag, Shape_info>>
-			gump(info, true);
-	if (game == BLACK_GATE || game == SERPENT_ISLE) {
-		gump.read(
-				game, game == BLACK_GATE ? EXULT_BG_FLX_CONTAINER_DAT
-										 : EXULT_SI_FLX_CONTAINER_DAT);
-	} else {
-		gump.read(CONTAINER, false, game);
-	}
-	gump.read(PATCH_CONTAINER, true, game);
-
-	Functor_multidata_reader<
+					Armor_info, Shape_info, &Shape_info::armorinf>>;
+	using Container_reader = Functor_multidata_reader<
 			Shape_info,
-			Binary_reader_functor<
-					unsigned char, Shape_info, &Shape_info::ready_type, 6>,
-			Ready_type_functor>
-			ready(info);
-	ready.read(READY, false, game);
-	ready.read(PATCH_READY, true, game);
-
-	Read_Shapeinf_text_data_file(editing, game);
-	Read_Bodies_text_data_file(editing, game);
-	Read_Paperdoll_text_data_file(editing, game);
-
-	// Ensure valid ready spots for all shapes.
-	const unsigned char defready = game == BLACK_GATE ? backpack : rhand;
-	zinfo.ready_type             = defready;
-	for (auto& it : info) {
-		Shape_info& inf = it.second;
-		if (inf.ready_type == invalid_spot) {
-			inf.ready_type = defready;
-		}
-	}
-	bool auto_modified = false;
-	for (auto& it : info) {
-		const int   shnum = it.first;
-		Shape_info& inf   = it.second;
-		if (inf.has_monster_info()) {
-			Monster_info* minf = inf.monstinf;
-			if (minf->can_teleport()) {
-				std::cerr << "Shape " << shnum
-						  << " is a monster that can teleport, teleport flag "
-							 "moved from Monster info ( monster.dat ) to Actor "
-							 "info ( shape_info.txt ) as NPC flags."
-						  << std::endl;
-				inf.set_actor_flag(Shape_info::teleports);
-				minf->set_can_teleport(false);
-				auto_modified = true;
-			}
-			if (minf->can_summon()) {
-				std::cerr << "Shape " << shnum
-						  << " is a monster that can summon, summon flag moved "
-							 "from Monster info ( monster.dat ) to Actor info "
-							 "( shape_info.txt ) as NPC flags."
-						  << std::endl;
-				inf.set_actor_flag(Shape_info::summons);
-				minf->set_can_summon(false);
-				auto_modified = true;
-			}
-			if (minf->can_be_invisible()) {
-				std::cerr << "Shape " << shnum
-						  << " is a monster that can be invisible, invisible "
-							 "flag moved from Monster info ( monster.dat ) to "
-							 "Actor info ( shape_info.txt ) as NPC flags."
-						  << std::endl;
-				inf.set_actor_flag(Shape_info::turns_invisible);
-				minf->set_can_be_invisible(false);
-				auto_modified = true;
-			}
-		}
-	}
-	return auto_modified;
+			Class_reader_functor<
+					Container_info, Shape_info, &Shape_info::continf>>;
+	using Monster_reader = Functor_multidata_reader<
+			Shape_info,
+			Class_reader_functor<
+					Monster_info, Shape_info, &Shape_info::monstinf>>;
+	std::array readers = make_unique_array<Base_reader>(
+			std::make_unique<Weapon_reader>(info),
+			std::make_unique<Ammo_reader>(info),
+			std::make_unique<Armor_reader>(info),
+			std::make_unique<Container_reader>(info),
+			std::make_unique<Monster_reader>(info));
+	static_assert(sections.size() == readers.size());
+	Read_text_data_file("static_data", readers, sections, false, game_type, -1);
 }
 
-/*
- *  Open/close file.
- */
 
-Shapes_vga_file::Shapes_vga_file(
-		const char* nm,        // Path to file.
-		int         u7drag,    // # from u7drag.h, or -1.
-		const char* nm2        // Path to patch version, or 0.
-		)
-		: Vga_file(nm, u7drag, nm2) {}
-
-void Shapes_vga_file::init() {
-	if (is_system_path_defined("<PATCH>") && U7exists(PATCH_SHAPES)) {
-		load(SHAPES_VGA, PATCH_SHAPES);
-	} else {
-		load(SHAPES_VGA);
-	}
-	info_read = false;
-}
-
-/*
- *  Make a spot for a new shape, and delete frames in existing shape.
- *
- *  Output: ->shape, or 0 if invalid shapenum.
- */
-
-Shape* Shapes_vga_file::new_shape(int shapenum) {
-	Shape* newshape = Vga_file::new_shape(shapenum);
-	return newshape;
-}

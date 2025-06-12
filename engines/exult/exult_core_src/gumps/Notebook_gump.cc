@@ -946,6 +946,12 @@ void Notebook_gump::read_auto_text() {
 		} else {
 			const str_int_pair& resource
 					= game->get_resource("config/autonotes");
+			// TODO: Replace with ScummVM stream access via ExultFileAdapter
+			// The final implementation will look something like:
+			// ScummVM::Common::SeekableReadStream* stream = ExultEngine::getInstance()->getFileAdapter()->openFileForObject(resource.str, resource.num);
+			// Text_msg_file_reader reader(stream); // Text_msg_file_reader would need to accept ScummVM streams
+			
+			// For now, maintain backward compatibility with a fallback to IExultDataSource
 			IExultDataSource notesfile(resource.str, resource.num);
 			if (notesfile.good()) {
 				cout << "Loading default autonotes" << endl;

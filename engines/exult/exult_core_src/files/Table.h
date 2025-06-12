@@ -23,16 +23,21 @@
 
 #include "U7file.h"
 #include "common_types.h"
-#include "exceptions.h"
+#include "exceptions.h" // Retained for file_open_exception, etc.
 
-#include <string>
+#include "common/stream.h" // For ScummVM::Common::SeekableReadStream
+#include "common/endians.h"  // For ScummVM_READ_LE32 etc. (may be needed in .cc)
+
+#include <string> // For std::string (used in old is_table)
 #include <vector>
+#include <memory> // For std::unique_ptr
 
-class DataSource;
+// class DataSource; // Replaced by ScummVM streams
 
 /**
  *  The Table class is an data reader which reads data in the table
  *  file format. The actual data need not be in a file, however.
+ *  MODIFIED: Now uses ScummVM::Common::SeekableReadStream via U7file base class.
  */
 class Table : public U7file {
 protected:
@@ -42,27 +47,43 @@ protected:
 	void index_file() override;
 
 	Reference get_object_reference(uint32 objnum) const override {
-		return object_list[objnum];
+		if (objnum < object_list.size()) {
+			return object_list[objnum];
+		}
+		return Reference{0,0}; // Invalid index
 	}
 
 public:
-	/// Basic constructor.
+	/// Constructor now takes a ScummVM stream.
 	/// @param spec File name and object index pair.
-	explicit Table(const File_spec& spec) : U7file(spec) {}
+	/// @param stream ScummVM stream. Table (via U7file) takes ownership.
+	Table(const File_spec& spec, std::unique_ptr<ScummVM::Common::SeekableReadStream> stream)
+		: U7file(spec, std::move(stream)) {
+		if (_scummvmStream && _scummvmStream->isOpen()) {
+			index_file(); // Populate object_list
+		} else {
+            // ScummVM::debug(1, "Table: Stream not valid for %s", identifier.name.c_str());
+        }
+	}
 
-	size_t number_of_objects() override {
+	size_t number_of_objects() const override { // made const
 		return object_list.size();
 	}
 
-	const char* get_archive_type() override {
+	const char* get_archive_type() const override { // made const
 		return "TABLE";
 	}
 
-	static bool is_table(IDataSource* in);
-	static bool is_table(const std::string& fname);
+	// static bool is_table(IDataSource* in); // Old signature, IDataSource is removed.
+	// static bool is_table(const std::string& fname); // Direct file access removed.
+	// U7FileManager will determine file type before creating Table instance.
+	// A stream-based is_table could be added here if needed for U7FileManager.
+	// static bool is_table(ScummVM::Common::SeekableReadStream* stream);
 };
 
-using TableFile   = U7DataFile<Table>;
-using TableBuffer = U7DataBuffer<Table>;
+// using TableFile   = U7DataFile<Table>; // U7DataFile template removed
+// using TableBuffer = U7DataBuffer<Table>; // U7DataBuffer template removed
+// U7FileManager will directly create Table objects with streams.
 
 #endif
+

@@ -356,6 +356,8 @@ void DgdsEngine::init(bool restarting) {
 		delete _hocIntro;
 		delete _chinaTank;
 		delete _chinaTrain;
+		delete _gameGlobals;
+		_gameGlobals = nullptr; // This will be recreated in loadGameFiles
 	}
 
 	_gamePals = new GamePalettes(_resource, _decompressor);
@@ -495,7 +497,7 @@ void DgdsEngine::loadRestartFile() {
 }
 
 /*static*/ void
-DgdsEngine::dumpFrame(const Graphics::ManagedSurface &surf, const char *name) {
+DgdsEngine::dumpFrame(const Graphics::Surface &surf, const char *name) {
 #ifdef DUMP_FRAME_DATA
 	/* For debugging, dump the frame contents.. */
 	Common::DumpFile outf;
@@ -505,8 +507,7 @@ DgdsEngine::dumpFrame(const Graphics::ManagedSurface &surf, const char *name) {
 	g_system->getPaletteManager()->grabPalette(palbuf, 0, 256);
 
 	outf.open(Common::Path(Common::String::format("/tmp/%07d-%s.png", now, name)));
-	// Operator magic - convert ManagedSurface reg to Surface ref.
-	::Image::writePNG(outf, *(&surf), palbuf);
+	::Image::writePNG(outf, surf, palbuf);
 	outf.close();
 #endif
 }
@@ -888,6 +889,32 @@ void DgdsEngine::disableKeymapper() {
 	_eventMan->getKeymapper()->setEnabledKeymapType(Common::Keymap::kKeymapTypeGui);
 }
 
+Common::Error DgdsEngine::loadGameStream(Common::SeekableReadStream *stream) {
+	//
+	// First check if it's an original game save file
+	//
+	// This should be safe on ScummVM save files because they have
+	// a 32 bit version number first, so the string will be 0 length.
+	//
+	uint16 origSlotNum = stream->readUint16LE();
+	Common::String origName = stream->readString();
+	uint32 magic = stream->readUint32LE();
+
+	if (magic == _gdsScene->getMagic()) {
+		// Original type save.
+		debug("Loading original game save %03d '%s' magic %08x", origSlotNum, origName.c_str(), magic);
+		_menu->hideMenu();
+		_gdsScene->loadGameStateFromFile(stream, origName);
+		return Common::kNoError;
+	} else {
+		// Rewind stream to load ScummVM save
+		stream->seek(0, SEEK_SET);
+		Common::Serializer s(stream, nullptr);
+		return syncGame(s);
+	}
+}
+
+
 Common::Error DgdsEngine::syncGame(Common::Serializer &s) {
 	//
 	// Version history:
@@ -897,7 +924,6 @@ Common::Error DgdsEngine::syncGame(Common::Serializer &s) {
 	// 3: Stopped saving ADS/TTM state
 	// 4: Stopped saving palette state
 	//
-
 	assert(_scene && _gdsScene);
 
 	_menu->hideMenu();

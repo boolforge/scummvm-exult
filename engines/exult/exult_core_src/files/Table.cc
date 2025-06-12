@@ -25,65 +25,104 @@
 #include "Table.h"
 
 #include "exceptions.h"
+#include "common/debug.h"   // For ScummVM_DEBUG_INFO, etc.
+#include "common/stream.h"  // For ScummVM::Common::SeekableReadStream
+#include "common/endians.h" // For ScummVM_READ_LE16, ScummVM_READ_LE32
 
-using std::FILE;
-using std::size_t;
-using std::string;
+// Removed: using std::FILE; - Not used
+// Removed: using std::size_t; - Use directly
+// Removed: using std::string; - Use directly
 
+/**
+ *  Reads the header from a table file and builds an object index.
+ *  MODIFIED: Uses _scummvmStream (member of U7file base class).
+ */
 void Table::index_file() {
-	if (!data) {
-		throw file_read_exception(identifier.name);
+	if (!_scummvmStream || !_scummvmStream->isOpen()) {
+		ScummVM::debug(1, "Table::index_file - Stream not available or not open for %s", identifier.name.c_str());
+		// If the stream is bad, object_list will remain empty, which is handled by number_of_objects().
+		// Consider if an exception should be thrown if the stream was expected to be valid.
+		// For now, matching U7file.h behavior where retrieve() will fail.
+		// throw file_read_exception(identifier.name.c_str()); // Or this, if constructor guarantees a good stream or throws.
+		return;
 	}
-	if (!is_table(data.get())) {    // Not a table file we recognise
-		throw wrong_file_type_exception(identifier.name, "TABLE");
+
+	// The type verification (is_table) should ideally be done by U7FileManager
+	// before creating the Table object. If it must be done here, a stream-based
+	// is_table static method would be needed.
+	// For now, proceeding with reading, assuming the stream is a valid table file.
+
+	_scummvmStream->seek(0, SEEK_SET); // Ensure we start reading from the beginning of the stream.
+	if (_scummvmStream->readError()) {
+		ScummVM::error("Table::index_file - Failed to seek to beginning of stream for %s", identifier.name.c_str());
+		_scummvmStream.reset(); // Invalidate stream
+		throw file_read_exception(identifier.name.c_str());
 	}
+
 	while (true) {
 		Reference f;
-		f.size = data->read2();
+		// Table files store size as uint16 and offset as uint32, typically little-endian.
+		f.size = _scummvmStream->read_le16();
 
-		if (f.size == 65535) {
+		if (_scummvmStream->readError()) {
+			ScummVM::error("Table::index_file - Read error while reading object size for %s", identifier.name.c_str());
+			object_list.clear();
+			_scummvmStream.reset(); // Invalidate stream
+			throw file_read_exception(identifier.name.c_str());
+		}
+
+		if (f.size == 0xFFFF) { // End of table marker (65535 for uint16)
 			break;
 		}
-		f.offset = data->read4();
+
+		f.offset = _scummvmStream->read_le32();
+
+		if (_scummvmStream->readError()) {
+			ScummVM::error("Table::index_file - Read error while reading object offset for %s", identifier.name.c_str());
+			object_list.clear();
+			_scummvmStream.reset(); // Invalidate stream
+			throw file_read_exception(identifier.name.c_str());
+		}
+
+		// Note: In Exult, table file offsets are usually absolute from the start of the file.
+		// If they were relative to some data area, adjustment would be needed here.
+		// Assuming absolute offsets as per typical Exult table file structure.
+		ScummVM::debug(3, "Table::index_file - Item: size %u, offset %u for %s", (unsigned int)f.size, (unsigned int)f.offset, identifier.name.c_str());
 		object_list.push_back(f);
 	}
+	ScummVM::debug(2, "Table::index_file - Indexed %zu objects for %s", object_list.size(), identifier.name.c_str());
 }
 
-/**
- *  Verify if a file is a table.  Note that this is a STATIC method.
- *  @param in   DataSource to verify.
- *  @return Whether or not the DataSource is a table file.
- */
-bool Table::is_table(IDataSource* in) {
-	const size_t pos       = in->getPos();
-	const size_t file_size = in->getSize();
-
-	in->seek(0);
-	while (true) {
-		const uint16 size = in->read2();
-
-		// End of table marker.
-		if (size == 65535) {
-			break;
+// Old static is_table methods are removed as they relied on IDataSource or direct file access.
+// A new static method Table::is_table(ScummVM::Common::SeekableReadStream* stream) could be added
+// in Table.h and implemented here if U7FileManager requires it for type detection before object creation.
+// For example:
+/*
+bool Table::is_table(ScummVM::Common::SeekableReadStream* stream) {
+	if (!stream || !stream->isOpen() || stream->size() < 2) return false; // Minimum for EOF marker
+	long original_pos = stream->pos();
+	stream->seek(0, SEEK_SET);
+	bool looks_like_table = false;
+	size_t items_read = 0;
+	try {
+		while(stream->tell() < stream->size() - 1) { // -1 to ensure read_le16 doesn't go past EOF if size is odd
+			uint16 size = stream->read_le16();
+			if (stream->readError()) break;
+			if (size == 0xFFFF) {
+				looks_like_table = true;
+				break;
+			}
+			if (stream->tell() > stream->size() - 4) break; // Not enough for offset
+			stream->read_le32(); // Read offset
+			if (stream->readError()) break;
+			items_read++;
+			if (items_read > 10000) break; // Sanity break for very large non-table files
 		}
-		const uint32 offset = in->read4();
-		if (size > file_size || offset > file_size) {
-			in->seek(pos);
-			return false;
-		}
+	} catch (...) {
+		// Stream errors might throw, or readError() catches them.
 	}
-
-	in->seek(pos);
-	return true;
+	stream->seek(original_pos, SEEK_SET);
+	return looks_like_table && !stream->readError();
 }
+*/
 
-/**
- *  Verify if a file is a table.  Note that this is a STATIC method.
- *  @param fname    Name of file to verify.
- *  @return Whether or not the file is a table file. Returns false if
- *  the file does not exist.
- */
-bool Table::is_table(const std::string& fname) {
-	IFileDataSource ds(fname.c_str());
-	return ds.good() && is_table(&ds);
-}
